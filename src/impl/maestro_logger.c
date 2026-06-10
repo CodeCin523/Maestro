@@ -4,7 +4,6 @@
 
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
 
 #if HARP_PLATFORM_LINUX
     #include <unistd.h>
@@ -71,12 +70,12 @@ static inline uint64_t format_level(char *buf, uint64_t index, uint8_t level) {
 }
 
 
-static inline void maestro_log_flush(MaestroLoggerHandler *handler) {
-    if(handler == NULL || handler->p_buf == NULL)
+static inline void maestro_log_flush(MaestroLoggerHandlerImpl *handler) {
+    if(handler == NULL || handler->logger_handler.p_buf == NULL)
         return;
 
 #if HARP_PLATFORM_LINUX
-    write(STDOUT_FILENO, handler->p_buf, handler->buf_index);
+    write(STDOUT_FILENO, handler->logger_handler.p_buf, handler->logger_handler.buf_index);
 #elif HARP_PLATFORM_WINDOWS
     HANDLE std_out = GetStdHandle(STD_OUTPUT_HANDLE);
     DWORD written = 0;
@@ -90,10 +89,10 @@ static inline void maestro_log_flush(MaestroLoggerHandler *handler) {
     );
 #endif
 
-    handler->buf_index = 0;
+    handler->logger_handler.buf_index = 0;
 }
-static inline void maestro_log(MaestroLoggerHandler *handler, const HarpName name, const char *msg, uint8_t level) {
-    if(handler == NULL || handler->p_buf == NULL || msg == NULL)
+static inline void maestro_log(MaestroLoggerHandlerImpl *handler, const HarpName name, const char *msg, uint8_t level) {
+    if(handler == NULL || handler->logger_handler.p_buf == NULL || msg == NULL)
         return;
 
     size_t len_msg = strlen(msg);
@@ -111,20 +110,27 @@ static inline void maestro_log(MaestroLoggerHandler *handler, const HarpName nam
     if(name != NULL)
         len_required += len_name + 3; /* " [name]" */
 
-     if(handler->buf_index + len_required > handler->buf_size)
+     if(handler->logger_handler.buf_index + len_required > handler->logger_handler.buf_size)
         maestro_log_flush(handler);
 
-    char *buf = handler->p_buf;
-    uint64_t index = handler->buf_index;
+    char *buf = handler->logger_handler.p_buf;
+    uint64_t index = handler->logger_handler.buf_index;
 
-    len_msg = allowed_len(len_msg, len_required, handler->buf_size - index);
+    len_msg = allowed_len(len_msg, len_required, handler->logger_handler.buf_size - index);
 
     { // time
         time_t now;
         time(&now);
-        struct tm *local = localtime(&now);
 
-        index = format_date(buf, index, local);
+        if(now > handler->last_time) {
+            handler->last_time = now;
+
+            struct tm *local = localtime(&now);
+            format_date(handler->time, 0, local);
+        }
+        
+        memcpy(&buf[index], handler->time, 19);
+        index += 19;
     }
     { // level
         buf[index++] = ' ';
@@ -148,7 +154,7 @@ static inline void maestro_log(MaestroLoggerHandler *handler, const HarpName nam
         buf[index++] = '\n';
     }
 
-    handler->buf_index = index;
+    handler->logger_handler.buf_index = index;
 }
 
 
@@ -198,28 +204,32 @@ HarpResult init_logger(HarpCoreApi *api, HarpHandlerBase *base, HarpCreatorBase 
         logger_creator = *(MaestroLoggerCreator *)creator;
     }
 
-    MaestroLoggerHandler *handler = (MaestroLoggerHandler *)base;
+    MaestroLoggerHandlerImpl *handler = (MaestroLoggerHandlerImpl *)base;
     
     void *tmp = malloc(logger_creator.buffer_size);
     if(tmp == NULL)
         return HARP_RESULT_OUT_OF_MEMORY;
 
-    handler->p_buf = tmp;
-    handler->buf_index = 0;
-    handler->buf_size = logger_creator.buffer_size;
+    handler->logger_handler.p_buf = tmp;
+    handler->logger_handler.buf_index = 0;
+    handler->logger_handler.buf_size = logger_creator.buffer_size;
+
+    handler->last_time = 0;
 
     return HARP_RESULT_OK;
 }
 HarpResult term_logger(HarpCoreApi *api, HarpHandlerBase *base) {
     // harp guarenty we are in the correct state to clear, but it do not guarenty it was correctly clean if it fail init
-    MaestroLoggerHandler *handler = (MaestroLoggerHandler *)base;
+    MaestroLoggerHandlerImpl *handler = (MaestroLoggerHandlerImpl *)base;
 
-    if(handler->p_buf != NULL)
-        free(handler->p_buf);
+    if(handler->logger_handler.p_buf != NULL)
+        free(handler->logger_handler.p_buf);
 
-    handler->p_buf = NULL;
-    handler->buf_size = 0;
-    handler->buf_index = 0;
+    handler->logger_handler.p_buf = NULL;
+    handler->logger_handler.buf_size = 0;
+    handler->logger_handler.buf_index = 0;
+
+    handler->last_time = 0;
     
     return HARP_RESULT_OK; // a cleanup should never fail.
 }

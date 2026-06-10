@@ -3,10 +3,18 @@
 
 #include <maestro/maestro_logger.h>
 
+#include <time.h>
+
+
+typedef struct MaestroLoggerHandlerImpl {
+    MaestroLoggerHandler logger_handler;
+    time_t last_time;
+    char time[19];
+} MaestroLoggerHandlerImpl;
 
 typedef struct MaestroLoggerApiImpl {
     MaestroLoggerApi logger_api;
-    MaestroLoggerHandler *logger_handler;
+    MaestroLoggerHandlerImpl *logger_handler;
 } MaestroLoggerApiImpl;
 
 

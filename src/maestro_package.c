@@ -20,8 +20,8 @@ HarpResult maestro_register(HarpCoreApi *core) {
 
     handler_desc.name = MAESTRO_LOGGER_HANDLER_NAME;
     handler_desc.version = MAESTRO_LOGGER_HANDLER_VERSION;
-    handler_desc.instance_size = sizeof(MaestroLoggerHandler);
-    handler_desc.instance_alignment = alignof(MaestroLoggerHandler);
+    handler_desc.instance_size = sizeof(MaestroLoggerHandlerImpl);
+    handler_desc.instance_alignment = alignof(MaestroLoggerHandlerImpl);
     handler_desc.pfn_init = init_logger;
     handler_desc.pfn_term = term_logger;
     handler_desc.p_dependencies = NULL;
@@ -50,7 +50,7 @@ HarpResult maestro_register(HarpCoreApi *core) {
 
     MaestroLoggerApiImpl *logger = HARP_API_AS(MaestroLoggerApiImpl, api_base);
 
-    logger->logger_handler = (MaestroLoggerHandler *) handler_base;
+    logger->logger_handler = (MaestroLoggerHandlerImpl *) handler_base;
 
     logger->logger_api.log_info = log_info;
     logger->logger_api.log_debug = log_debug;

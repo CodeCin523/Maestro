@@ -1,17 +1,18 @@
 #include "maestro_logger.h"
 
-#undef MAESTRO_UTILS_UNDEF
-#include <maestro/utils/maestro_platform.h>
+#include <harp/utils/harp_platform.h>
 
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
-#ifdef MAESTRO_PLATFORM_LINUX
+#if HARP_PLATFORM_LINUX
     #include <unistd.h>
-#elif defined(MAESTRO_PLATFORM_WINDOWS)
+#elif HARP_PLATFORM_WINDOWS
     #include <windows.h>
     #include <fileapi.h>
+#else
+    #error Unsupported system.
 #endif
 
 
@@ -74,9 +75,9 @@ static inline void maestro_log_flush(MaestroLoggerHandler *handler) {
     if(handler == NULL || handler->p_buf == NULL)
         return;
 
-#ifdef MAESTRO_PLATFORM_LINUX
+#if HARP_PLATFORM_LINUX
     write(STDOUT_FILENO, handler->p_buf, handler->buf_index);
-#elif defined(MAESTRO_PLATFORM_WINDOWS)
+#elif HARP_PLATFORM_WINDOWS
     HANDLE std_out = GetStdHandle(STD_OUTPUT_HANDLE);
     DWORD written = 0;
     
@@ -92,7 +93,7 @@ static inline void maestro_log_flush(MaestroLoggerHandler *handler) {
     handler->buf_index = 0;
 }
 static inline void maestro_log(MaestroLoggerHandler *handler, const HarpName name, const char *msg, uint8_t level) {
-    if(handler == NULL || msg == NULL)
+    if(handler == NULL || handler->p_buf == NULL || msg == NULL)
         return;
 
     size_t len_msg = strlen(msg);

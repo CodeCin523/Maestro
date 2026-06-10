@@ -7,7 +7,6 @@ extern "C" {
 
 #include <harp/harp.h>
 
-#undef HARP_UTILS_UNDEF
 #include <harp/utils/harp_version.h>
 
 
@@ -58,10 +57,6 @@ struct MaestroLoggerApi {
     void (*log_error)(MaestroLoggerApi *api, const HarpName name, const char *msg);
 };
 
-
-#define HARP_UTILS_UNDEF
-#include <harp/utils/harp_version.h>
-#undef HARP_UTILS_UNDEF
 
 #ifdef __cplusplus
 }

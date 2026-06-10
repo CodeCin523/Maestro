@@ -3,7 +3,6 @@
 #include <maestro/maestro.h>
 #include <maestro/maestro_logger.h>
 
-#undef HARP_UTILS_UNDEF
 #include <harp/utils/harp_api.h>
 #include <harp/utils/harp_version.h>
 

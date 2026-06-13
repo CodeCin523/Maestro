@@ -71,11 +71,11 @@ static inline uint64_t format_level(char *buf, uint64_t index, uint8_t level) {
 
 
 static inline void maestro_log_flush(MaestroLoggerHandlerImpl *handler) {
-    if(handler == NULL || handler->logger_handler.p_buf == NULL)
+    if(handler == NULL || handler->p_buf == NULL)
         return;
 
 #if HARP_PLATFORM_LINUX
-    write(STDOUT_FILENO, handler->logger_handler.p_buf, handler->logger_handler.buf_index);
+    write(STDOUT_FILENO, handler->p_buf, handler->buf_index);
 #elif HARP_PLATFORM_WINDOWS
     HANDLE std_out = GetStdHandle(STD_OUTPUT_HANDLE);
     DWORD written = 0;
@@ -89,10 +89,10 @@ static inline void maestro_log_flush(MaestroLoggerHandlerImpl *handler) {
     );
 #endif
 
-    handler->logger_handler.buf_index = 0;
+    handler->buf_index = 0;
 }
 static inline void maestro_log(MaestroLoggerHandlerImpl *handler, const HarpName name, const char *msg, uint8_t level) {
-    if(handler == NULL || handler->logger_handler.p_buf == NULL || msg == NULL)
+    if(handler == NULL || handler->p_buf == NULL || msg == NULL)
         return;
 
     size_t len_msg = strlen(msg);
@@ -110,13 +110,13 @@ static inline void maestro_log(MaestroLoggerHandlerImpl *handler, const HarpName
     if(name != NULL)
         len_required += len_name + 3; /* " [name]" */
 
-     if(handler->logger_handler.buf_index + len_required > handler->logger_handler.buf_size)
+     if(handler->buf_index + len_required > handler->buf_size)
         maestro_log_flush(handler);
 
-    char *buf = handler->logger_handler.p_buf;
-    uint64_t index = handler->logger_handler.buf_index;
+    char *buf = handler->p_buf;
+    uint64_t index = handler->buf_index;
 
-    len_msg = allowed_len(len_msg, len_required, handler->logger_handler.buf_size - index);
+    len_msg = allowed_len(len_msg, len_required, handler->buf_size - index);
 
     { // time
         time_t now;
@@ -154,38 +154,38 @@ static inline void maestro_log(MaestroLoggerHandlerImpl *handler, const HarpName
         buf[index++] = '\n';
     }
 
-    handler->logger_handler.buf_index = index;
+    handler->buf_index = index;
 }
 
 
-void log_info(MaestroLoggerApi *api, const HarpName name, const char *msg) {
-    if(api == NULL)
+void log_info(MaestroLoggerHandler *logger_handler, const HarpName name, const char *msg) {
+    if(logger_handler == NULL)
         return;
 
-    MaestroLoggerApiImpl *api_impl = (MaestroLoggerApiImpl *) api;
-    maestro_log(api_impl->logger_handler, name, msg, 0);
+    MaestroLoggerHandlerImpl *impl = (MaestroLoggerHandlerImpl *) logger_handler;
+    maestro_log(impl, name, msg, 0);
 }
-void log_debug(MaestroLoggerApi *api, const HarpName name, const char *msg) {
-    if(api == NULL)
+void log_debug(MaestroLoggerHandler *logger_handler, const HarpName name, const char *msg) {
+    if(logger_handler == NULL)
         return;
 
-    MaestroLoggerApiImpl *api_impl = (MaestroLoggerApiImpl *) api;
-    maestro_log(api_impl->logger_handler, name, msg, 1);
+    MaestroLoggerHandlerImpl *impl = (MaestroLoggerHandlerImpl *) logger_handler;
+    maestro_log(impl, name, msg, 1);
 }
-void log_warning(MaestroLoggerApi *api, const HarpName name, const char *msg) {
-    if(api == NULL)
+void log_warning(MaestroLoggerHandler *logger_handler, const HarpName name, const char *msg) {
+    if(logger_handler == NULL)
         return;
 
-    MaestroLoggerApiImpl *api_impl = (MaestroLoggerApiImpl *) api;
-    maestro_log(api_impl->logger_handler, name, msg, 2);
+    MaestroLoggerHandlerImpl *impl = (MaestroLoggerHandlerImpl *) logger_handler;
+    maestro_log(impl, name, msg, 2);
 }
-void log_error(MaestroLoggerApi *api, const HarpName name, const char *msg) {
-    if(api == NULL)
+void log_error(MaestroLoggerHandler *logger_handler, const HarpName name, const char *msg) {
+    if(logger_handler == NULL)
         return;
 
-    MaestroLoggerApiImpl *api_impl = (MaestroLoggerApiImpl *) api;
-    maestro_log(api_impl->logger_handler, name, msg, 3);
-    maestro_log_flush(api_impl->logger_handler);
+    MaestroLoggerHandlerImpl *impl = (MaestroLoggerHandlerImpl *) logger_handler;
+    maestro_log(impl, name, msg, 3);
+    maestro_log_flush(impl);
 }
 
 
@@ -193,7 +193,7 @@ void log_error(MaestroLoggerApi *api, const HarpName name, const char *msg) {
 /*  LOGGER HANDLER                                                                  */
 /* ================================================================================ */
 
-HarpResult init_logger(HarpCoreApi *api, HarpHandlerBase *base, HarpCreatorBase *creator) {
+HarpResult init_logger(HarpCoreHandler *core_handler, HarpHandlerBase *base, HarpCreatorBase *creator) {
     // the arguments are guaranteed to be valid by harp.
 
     MaestroLoggerCreator logger_creator = {
@@ -210,24 +210,24 @@ HarpResult init_logger(HarpCoreApi *api, HarpHandlerBase *base, HarpCreatorBase 
     if(tmp == NULL)
         return HARP_RESULT_OUT_OF_MEMORY;
 
-    handler->logger_handler.p_buf = tmp;
-    handler->logger_handler.buf_index = 0;
-    handler->logger_handler.buf_size = logger_creator.buffer_size;
+    handler->p_buf = tmp;
+    handler->buf_index = 0;
+    handler->buf_size = logger_creator.buffer_size;
 
     handler->last_time = 0;
 
     return HARP_RESULT_OK;
 }
-HarpResult term_logger(HarpCoreApi *api, HarpHandlerBase *base) {
+HarpResult term_logger(HarpCoreHandler *core_handler, HarpHandlerBase *base) {
     // harp guarenty we are in the correct state to clear, but it do not guarenty it was correctly clean if it fail init
     MaestroLoggerHandlerImpl *handler = (MaestroLoggerHandlerImpl *)base;
 
-    if(handler->logger_handler.p_buf != NULL)
-        free(handler->logger_handler.p_buf);
+    if(handler->p_buf != NULL)
+        free(handler->p_buf);
 
-    handler->logger_handler.p_buf = NULL;
-    handler->logger_handler.buf_size = 0;
-    handler->logger_handler.buf_index = 0;
+    handler->p_buf = NULL;
+    handler->buf_size = 0;
+    handler->buf_index = 0;
 
     handler->last_time = 0;
     

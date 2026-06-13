@@ -16,7 +16,6 @@ extern "C" {
 
 typedef struct MaestroLoggerCreator MaestroLoggerCreator;
 typedef struct MaestroLoggerHandler MaestroLoggerHandler;
-typedef struct MaestroLoggerApi MaestroLoggerApi;
 
 
 /* ================================================================================ */
@@ -35,26 +34,10 @@ struct MaestroLoggerCreator {
 struct MaestroLoggerHandler {
     HarpHandlerBase _base;
 
-    char *p_buf;
-    uint64_t buf_index;
-    uint64_t buf_size;
-};
-
-
-/* ================================================================================ */
-/*  Application Programming Interface                                               */
-/* ================================================================================ */
-
-#define MAESTRO_LOGGER_API_NAME "MaestroLoggerApi"
-#define MAESTRO_LOGGER_API_VERSION HARP_MAKE_VERSION(1,0,0)
-
-struct MaestroLoggerApi {
-    HarpApiBase _base;
-
-    void (*log_info)(MaestroLoggerApi *api, const HarpName name, const char *msg);
-    void (*log_debug)(MaestroLoggerApi *api, const HarpName name, const char *msg);
-    void (*log_warning)(MaestroLoggerApi *api, const HarpName name, const char *msg);
-    void (*log_error)(MaestroLoggerApi *api, const HarpName name, const char *msg);
+    void (*log_info)(MaestroLoggerHandler *h, const HarpName name, const char *msg);
+    void (*log_debug)(MaestroLoggerHandler *h, const HarpName name, const char *msg);
+    void (*log_warning)(MaestroLoggerHandler *h, const HarpName name, const char *msg);
+    void (*log_error)(MaestroLoggerHandler *h, const HarpName name, const char *msg);
 };
 
 

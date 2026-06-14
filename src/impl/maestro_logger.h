@@ -18,10 +18,13 @@ typedef struct MaestroLoggerHandlerImpl {
 } MaestroLoggerHandlerImpl;
 
 
-void log_info(MaestroLoggerHandler *logger_handler, const HarpName name, const char *msg);
-void log_debug(MaestroLoggerHandler *logger_handler, const HarpName name, const char *msg);
-void log_warning(MaestroLoggerHandler *logger_handler, const HarpName name, const char *msg);
-void log_error(MaestroLoggerHandler *logger_handler, const HarpName name, const char *msg);
+void logger_fallback_log(MaestroLoggerHandler *h, const MaestroLoggerLevel level, const HarpName name, const char *msg);
+void logger_fallback_logf(MaestroLoggerHandler *h, const MaestroLoggerLevel level, const HarpName name, const char *fmt, ...);
+
+void logger_log(MaestroLoggerHandler *h, const MaestroLoggerLevel level, const HarpName name, const char *msg);
+void logger_logf(MaestroLoggerHandler *h, const MaestroLoggerLevel level, const HarpName name, const char *fmt, ...);
+
+void logger_flush(MaestroLoggerHandler *h);
 
 
 HarpResult init_logger(HarpCoreHandler *core_handler, HarpHandlerBase *base, HarpCreatorBase *creator);

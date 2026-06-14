@@ -4,188 +4,275 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <stdarg.h>
+#include <stdio.h>
+#include <time.h>
+
 
 #if HARP_PLATFORM_LINUX
     #include <unistd.h>
 #elif HARP_PLATFORM_WINDOWS
     #include <windows.h>
-    #include <fileapi.h>
 #else
     #error Unsupported system.
 #endif
 
 
 /* ================================================================================ */
-/*  LOGGER API                                                                      */
+/*  CONSTANTS                                                                      */
 /* ================================================================================ */
 
-static inline size_t allowed_len(size_t len_msg, size_t len_required, size_t bufSize) {
-    size_t allowed = bufSize - (len_required - len_msg);
-    return len_msg > allowed? allowed : len_msg;
+#define LOGGER_TIME_SIZE 19
+#define LOGGER_LEVEL_SIZE 5
+#define LOGGER_FIXED_SIZE (LOGGER_TIME_SIZE + 1 + LOGGER_LEVEL_SIZE + 1 + 3)
+
+#define LOGGER_MIN_FREE_SPACE 128
+
+
+/* ================================================================================ */
+/*  LEVELS                                                                         */
+/* ================================================================================ */
+
+static const char LOGGER_LEVEL_STR[5][4] = {
+    "MSG\0",
+    "WRN\0",
+    "DBG\0",
+    "ERR\0",
+    "FTL\0",
+};
+
+
+/* ================================================================================ */
+/*  FORMATTERS                                                                     */
+/* ================================================================================ */
+
+static inline uint64_t logger_write_timestamp(
+    MaestroLoggerHandlerImpl *impl,
+    char *buf,
+    uint64_t index
+) {
+    time_t now;
+    time(&now);
+
+    if(now != impl->last_time) {
+        impl->last_time = now;
+
+        struct tm *t = localtime(&now);
+
+        uint16_t year = t->tm_year + 1900;
+        uint16_t day  = t->tm_yday + 1;
+
+        char *tmp = impl->time;
+
+        tmp[0]  = '[';
+
+        tmp[1]  = (year / 1000) % 10 + '0';
+        tmp[2]  = (year / 100) % 10 + '0';
+        tmp[3]  = (year / 10) % 10 + '0';
+        tmp[4]  = (year) % 10 + '0';
+
+        tmp[5]  = '-';
+
+        tmp[6]  = (day / 100) % 10 + '0';
+        tmp[7]  = (day / 10) % 10 + '0';
+        tmp[8]  = (day) % 10 + '0';
+
+        tmp[9]  = ' ';
+
+        tmp[10] = (t->tm_hour / 10) % 10 + '0';
+        tmp[11] = (t->tm_hour) % 10 + '0';
+
+        tmp[12] = ':';
+
+        tmp[13] = (t->tm_min / 10) % 10 + '0';
+        tmp[14] = (t->tm_min) % 10 + '0';
+
+        tmp[15] = ':';
+
+        tmp[16] = (t->tm_sec / 10) % 10 + '0';
+        tmp[17] = (t->tm_sec) % 10 + '0';
+
+        tmp[18] = ']';
+    }
+
+    memcpy(&buf[index], impl->time, LOGGER_TIME_SIZE);
+    return index + LOGGER_TIME_SIZE;
 }
 
-static inline uint64_t format_date(char *buf, uint64_t index, struct tm *local) {
-    uint16_t    tYear   = local->tm_year + 1900,
-                tDay    = local->tm_yday + 1;
-    uint8_t     tSec    = local->tm_sec,
-                tMin    = local->tm_min,
-                tHour   = local->tm_hour;
-        
-    buf[index++] = '[';
-    buf[index++] = (tYear / 1000) % 10 + '0';
-    buf[index++] = (tYear / 100) % 10 + '0';
-    buf[index++] = (tYear / 10) % 10 + '0';
-    buf[index++] = (tYear) % 10 + '0';
-    buf[index++] = '-';
-    buf[index++] = (tDay / 100) % 10 + '0';
-    buf[index++] = (tDay / 10) % 10 + '0';
-    buf[index++] = (tDay) % 10 + '0';
+static inline uint64_t logger_write_level(
+    char *buf,
+    uint64_t index,
+    MaestroLoggerLevel level
+) {
+    const char *lvl = LOGGER_LEVEL_STR[level];
+
     buf[index++] = ' ';
-    buf[index++] = (tHour / 10) % 10 + '0';
-    buf[index++] = (tHour) % 10 + '0';
-    buf[index++] = ':';
-    buf[index++] = (tMin / 10) % 10 + '0';
-    buf[index++] = (tMin) % 10 + '0';
-    buf[index++] = ':';
-    buf[index++] = (tSec / 10) % 10 + '0';
-    buf[index++] = (tSec) % 10 + '0';
-    buf[index++] = ']';
-
-    return index;
-}
-static inline uint64_t format_level(char *buf, uint64_t index, uint8_t level) {
-    static const char LOG_LEVEL[][3] = {
-        "MSG", "DBG", "WRN", "ERR"
-    };
-
-    const char *level_str = LOG_LEVEL[level % 4];
-
     buf[index++] = '[';
-    buf[index++] = level_str[0];
-    buf[index++] = level_str[1];
-    buf[index++] = level_str[2];
+    buf[index++] = lvl[0];
+    buf[index++] = lvl[1];
+    buf[index++] = lvl[2];
     buf[index++] = ']';
 
     return index;
 }
 
+static inline uint64_t logger_write_prefix(
+    MaestroLoggerHandlerImpl *impl,
+    char *buf,
+    uint64_t index,
+    MaestroLoggerLevel level,
+    const HarpName name
+) {
+    index = logger_write_timestamp(impl, buf, index);
+    index = logger_write_level(buf, index, level);
 
-static inline void maestro_log_flush(MaestroLoggerHandlerImpl *handler) {
-    if(handler == NULL || handler->p_buf == NULL)
+    buf[index++] = ' ';
+
+    if(name) {
+        size_t len = strlen(name);
+
+        buf[index++] = '[';
+        memcpy(&buf[index], name, len);
+        index += len;
+        buf[index++] = ']';
+    }
+
+    buf[index++] = ' ';
+    buf[index++] = '-';
+    buf[index++] = ' ';
+
+    return index;
+}
+
+
+/* ================================================================================ */
+/*  LOG FUNCTIONS                                                                 */
+/* ================================================================================ */
+
+void logger_fallback_log(MaestroLoggerHandler *h, const MaestroLoggerLevel level, const HarpName name, const char *msg) {
+    MaestroLoggerHandlerImpl *impl = (MaestroLoggerHandlerImpl *)h;
+    const char *lvl = LOGGER_LEVEL_STR[level];
+
+    char ts[LOGGER_TIME_SIZE + 1] = {0};
+    logger_write_timestamp(impl, ts, 0);
+
+    if(name)
+        printf("%s [%s] [%s] - %s\n", ts, lvl, name, msg);
+    else
+        printf("%s [%s] - %s\n", ts, lvl, msg);
+}
+void logger_fallback_logf(MaestroLoggerHandler *h, const MaestroLoggerLevel level, const HarpName name, const char *fmt, ...) {
+    MaestroLoggerHandlerImpl *impl = (MaestroLoggerHandlerImpl *)h;
+    const char *lvl = LOGGER_LEVEL_STR[level];
+
+    char ts[LOGGER_TIME_SIZE + 1] = {0};
+    logger_write_timestamp(impl, ts, 0);
+
+    printf("%s [%s]", ts, lvl);
+
+    if(name)
+        printf(" [%s]", name);
+
+    printf(" - ");
+
+    va_list args;
+    va_start(args, fmt);
+    vprintf(fmt, args);
+    va_end(args);
+
+    printf("\n");
+}
+
+
+void logger_log(MaestroLoggerHandler *h, const MaestroLoggerLevel level, const HarpName name, const char *msg) {
+    MaestroLoggerHandlerImpl *impl = (MaestroLoggerHandlerImpl *)h;
+    if(!impl || !impl->p_buf || !msg)
+        return;
+
+    char *buf = impl->p_buf;
+    uint64_t i = impl->buf_index;
+
+    if(impl->buf_size - i < LOGGER_FIXED_SIZE + strlen(msg) + LOGGER_MIN_FREE_SPACE) {
+        logger_flush(h);
+        i = 0;
+    }
+
+    i = logger_write_prefix(impl, buf, i, level, name);
+
+    size_t len = strlen(msg);
+    size_t cap = impl->buf_size - i;
+
+    if(len >= cap)
+        len = cap - 1;
+
+    memcpy(&buf[i], msg, len);
+    i += len;
+
+    buf[i++] = '\n';
+
+    impl->buf_index = i;
+
+    if(level >= MAESTRO_LOGGER_LEVEL_ERROR)
+        logger_flush(h);
+}
+void logger_logf(MaestroLoggerHandler *h, const MaestroLoggerLevel level, const HarpName name, const char *fmt, ...) {
+    MaestroLoggerHandlerImpl *impl = (MaestroLoggerHandlerImpl *)h;
+    if(!impl || !impl->p_buf || !fmt)
+        return;
+
+    char *buf = impl->p_buf;
+    uint64_t i = impl->buf_index;
+
+    if(impl->buf_size - i < LOGGER_FIXED_SIZE + LOGGER_MIN_FREE_SPACE) {
+        logger_flush(h);
+        i = 0;
+    }
+
+    i = logger_write_prefix(impl, buf, i, level, name);
+
+    size_t cap = impl->buf_size - i;
+
+    va_list args;
+    va_start(args, fmt);
+
+    int written = vsnprintf(&buf[i], cap, fmt, args);
+
+    va_end(args);
+
+    if(written > 0) {
+        if((size_t)written >= cap)
+            i = impl->buf_size - 1;
+        else
+            i += (size_t)written;
+    }
+
+    buf[i++] = '\n';
+
+    impl->buf_index = i;
+
+    if(level >= MAESTRO_LOGGER_LEVEL_ERROR)
+        logger_flush(h);
+}
+
+void logger_flush(MaestroLoggerHandler *h) {
+    MaestroLoggerHandlerImpl *impl = (MaestroLoggerHandlerImpl *)h;
+
+    if(!impl || !impl->p_buf)
         return;
 
 #if HARP_PLATFORM_LINUX
-    write(STDOUT_FILENO, handler->p_buf, handler->buf_index);
+    write(STDOUT_FILENO, impl->p_buf, impl->buf_index);
 #elif HARP_PLATFORM_WINDOWS
-    HANDLE std_out = GetStdHandle(STD_OUTPUT_HANDLE);
-    DWORD written = 0;
-    
-    WriteConsoleA(
-        std_out,
-        handler->p_buf,
-        (DWORD)handler->buf_index,
+    DWORD written;
+    WriteConsoleA(GetStdHandle(STD_OUTPUT_HANDLE),
+        impl->p_buf,
+        (DWORD)impl->buf_index,
         &written,
         NULL
     );
 #endif
 
-    handler->buf_index = 0;
-}
-static inline void maestro_log(MaestroLoggerHandlerImpl *handler, const HarpName name, const char *msg, uint8_t level) {
-    if(handler == NULL || handler->p_buf == NULL || msg == NULL)
-        return;
-
-    size_t len_msg = strlen(msg);
-
-    size_t len_name = 0;
-    if(name != NULL)
-        len_name = strlen(name);
-
-    size_t len_required =
-        19 +             /* timestamp */
-        6 +              /* level */
-        len_msg + 3 +    /* " - " */
-        1;               /* '\n' */
-
-    if(name != NULL)
-        len_required += len_name + 3; /* " [name]" */
-
-     if(handler->buf_index + len_required > handler->buf_size)
-        maestro_log_flush(handler);
-
-    char *buf = handler->p_buf;
-    uint64_t index = handler->buf_index;
-
-    len_msg = allowed_len(len_msg, len_required, handler->buf_size - index);
-
-    { // time
-        time_t now;
-        time(&now);
-
-        if(now > handler->last_time) {
-            handler->last_time = now;
-
-            struct tm *local = localtime(&now);
-            format_date(handler->time, 0, local);
-        }
-        
-        memcpy(&buf[index], handler->time, 19);
-        index += 19;
-    }
-    { // level
-        buf[index++] = ' ';
-        index = format_level(buf, index, level);
-    }
-    if(name != NULL) { // name
-        buf[index++] = ' ';
-        buf[index++] = '[';
-
-        memcpy(&buf[index], name, len_name);
-        index += len_name;
-
-        buf[index++] = ']';
-    }
-    { // message
-        buf[index++] = ' ';
-        buf[index++] = '-';
-        buf[index++] = ' ';
-        memcpy(&buf[index], msg, len_msg);
-        index += len_msg;
-        buf[index++] = '\n';
-    }
-
-    handler->buf_index = index;
-}
-
-
-void log_info(MaestroLoggerHandler *logger_handler, const HarpName name, const char *msg) {
-    if(logger_handler == NULL)
-        return;
-
-    MaestroLoggerHandlerImpl *impl = (MaestroLoggerHandlerImpl *) logger_handler;
-    maestro_log(impl, name, msg, 0);
-}
-void log_debug(MaestroLoggerHandler *logger_handler, const HarpName name, const char *msg) {
-    if(logger_handler == NULL)
-        return;
-
-    MaestroLoggerHandlerImpl *impl = (MaestroLoggerHandlerImpl *) logger_handler;
-    maestro_log(impl, name, msg, 1);
-}
-void log_warning(MaestroLoggerHandler *logger_handler, const HarpName name, const char *msg) {
-    if(logger_handler == NULL)
-        return;
-
-    MaestroLoggerHandlerImpl *impl = (MaestroLoggerHandlerImpl *) logger_handler;
-    maestro_log(impl, name, msg, 2);
-}
-void log_error(MaestroLoggerHandler *logger_handler, const HarpName name, const char *msg) {
-    if(logger_handler == NULL)
-        return;
-
-    MaestroLoggerHandlerImpl *impl = (MaestroLoggerHandlerImpl *) logger_handler;
-    maestro_log(impl, name, msg, 3);
-    maestro_log_flush(impl);
+    impl->buf_index = 0;
 }
 
 
@@ -211,10 +298,16 @@ HarpResult init_logger(HarpCoreHandler *core_handler, HarpHandlerBase *base, Har
         return HARP_RESULT_OUT_OF_MEMORY;
 
     handler->p_buf = tmp;
-    handler->buf_index = 0;
     handler->buf_size = logger_creator.buffer_size;
-
+    handler->buf_index = 0;
     handler->last_time = 0;
+
+    handler->handler._base.status &= ~HARP_STATUS_FLAG_AVAILABLE;
+
+    handler->handler.log = logger_log;
+    handler->handler.logf = logger_logf;
+
+    handler->handler._base.status |= HARP_STATUS_FLAG_AVAILABLE;
 
     return HARP_RESULT_OK;
 }
@@ -222,14 +315,22 @@ HarpResult term_logger(HarpCoreHandler *core_handler, HarpHandlerBase *base) {
     // harp guarenty we are in the correct state to clear, but it do not guarenty it was correctly clean if it fail init
     MaestroLoggerHandlerImpl *handler = (MaestroLoggerHandlerImpl *)base;
 
-    if(handler->p_buf != NULL)
+    if(handler->p_buf != NULL) {
+        logger_flush((MaestroLoggerHandler *)base);
         free(handler->p_buf);
+    }
 
     handler->p_buf = NULL;
     handler->buf_size = 0;
     handler->buf_index = 0;
-
     handler->last_time = 0;
+
+    handler->handler._base.status &= ~HARP_STATUS_FLAG_AVAILABLE;
+
+    handler->handler.log = logger_fallback_log;
+    handler->handler.logf = logger_fallback_logf;
+
+    handler->handler._base.status |= HARP_STATUS_FLAG_AVAILABLE;
     
     return HARP_RESULT_OK; // a cleanup should never fail.
 }

@@ -41,10 +41,9 @@ HarpResult maestro_register(HarpCoreHandler *core) {
 
     MaestroLoggerHandlerImpl *logger = (MaestroLoggerHandlerImpl *)handler_base;
 
-    logger->handler.log_info    = log_info;
-    logger->handler.log_debug   = log_debug;
-    logger->handler.log_warning = log_warning;
-    logger->handler.log_error   = log_error;
+    logger->handler.log = logger_fallback_log;
+    logger->handler.logf = logger_fallback_logf;
+    logger->handler.flush = logger_flush;
 
     handler_base->status |= HARP_STATUS_FLAG_AVAILABLE;
 

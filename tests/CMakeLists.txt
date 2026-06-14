@@ -1,4 +1,26 @@
 add_executable(
+    bench_maestro_logger
+    bench_logger.c
+)
+
+target_link_libraries(
+    bench_maestro_logger PRIVATE
+    HARP::Harp
+    Maestro
+)
+
+target_include_directories(
+    bench_maestro_logger PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
+)
+
+add_test(
+    NAME bench_maestro_logger
+    COMMAND bench_maestro_logger
+)
+
+
+add_executable(
     test_maestro_logger
     test_logger.c
 )

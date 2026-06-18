@@ -1,5 +1,5 @@
-#ifndef MAESTRO_LOGGER_HANDLER_H
-#define MAESTRO_LOGGER_HANDLER_H
+#ifndef IMPL_MAESTRO_LOGGER_H
+#define IMPL_MAESTRO_LOGGER_H
 
 #include <maestro/maestro_logger.h>
 
@@ -7,7 +7,7 @@
 
 
 typedef struct MaestroLoggerHandlerImpl {
-    MaestroLoggerHandler handler;
+    MaestroLoggerHandler pub;
     
     char *p_buf;
     uint64_t buf_index;
@@ -31,4 +31,4 @@ HarpResult init_logger(HarpCoreHandler *core_handler, HarpHandlerBase *base, Har
 HarpResult term_logger(HarpCoreHandler *core_handler, HarpHandlerBase *base);
 
 
-#endif /* MAESTRO_LOGGER_HANDLER_H */
+#endif /* IMPL_MAESTRO_LOGGER_H */

@@ -40,3 +40,26 @@ add_test(
     NAME test_maestro_logger
     COMMAND test_maestro_logger
 )
+
+
+add_executable(
+    test_maestro_window
+    test_window.c
+)
+
+target_link_libraries(
+    test_maestro_window PRIVATE
+    HARP::Harp
+    Maestro
+)
+
+target_include_directories(
+    test_maestro_window PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
+)
+
+add_test(
+    NAME test_maestro_window
+    COMMAND test_maestro_window
+)
+

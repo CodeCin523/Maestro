@@ -110,7 +110,7 @@ static void test_logger_get_handler(void) {
     assert(g_logger->flush != NULL);
 
     /* handler is AVAILABLE but not yet VALID */
-    assert(handler_base->status & HARP_STATUS_FLAG_AVAILABLE);
+    assert(handler_base->status & HARP_STATUS_FLAG_SERVING);
     assert(!(handler_base->status & HARP_STATUS_FLAG_VALID));
 
     TEST_MARKER("LOGGER", "GET_HANDLER_DONE");
@@ -153,7 +153,7 @@ static void test_logger_init_handler(void) {
     HarpHandlerBase *handler_base = (HarpHandlerBase *)g_logger;
 
     /* handler is now both AVAILABLE and VALID */
-    assert(handler_base->status & HARP_STATUS_FLAG_AVAILABLE);
+    assert(handler_base->status & HARP_STATUS_FLAG_SERVING);
     assert(handler_base->status & HARP_STATUS_FLAG_VALID);
 
     /* function pointers must still be populated */
@@ -248,7 +248,7 @@ static void test_logger_term_handler(void) {
     HarpHandlerBase *handler_base = (HarpHandlerBase *)g_logger;
 
     /* after termination: AVAILABLE (fallbacks rewired) but not VALID */
-    assert(handler_base->status & HARP_STATUS_FLAG_AVAILABLE);
+    assert(handler_base->status & HARP_STATUS_FLAG_SERVING);
     assert(!(handler_base->status & HARP_STATUS_FLAG_VALID));
 
     /* fallbacks should be callable again */

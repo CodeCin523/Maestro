@@ -6,7 +6,6 @@ extern "C" {
 #endif
 
 #include <harp/harp.h>
-
 #include <harp/utils/harp_version.h>
 
 

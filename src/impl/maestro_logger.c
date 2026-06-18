@@ -146,7 +146,7 @@ static inline uint64_t logger_write_prefix(
 
 
 /* ================================================================================ */
-/*  LOG FUNCTIONS                                                                 */
+/*  LOG FUNCTIONS                                                                   */
 /* ================================================================================ */
 
 void logger_fallback_log(MaestroLoggerHandler *h, const MaestroLoggerLevel level, const HarpName name, const char *msg) {
@@ -302,12 +302,12 @@ HarpResult init_logger(HarpCoreHandler *core_handler, HarpHandlerBase *base, Har
     handler->buf_index = 0;
     handler->last_time = 0;
 
-    handler->handler._base.status &= ~HARP_STATUS_FLAG_AVAILABLE;
+    core_handler->handler_set_serving(core_handler, base, 0);
 
-    handler->handler.log = logger_log;
-    handler->handler.logf = logger_logf;
+    handler->pub.log = logger_log;
+    handler->pub.logf = logger_logf;
 
-    handler->handler._base.status |= HARP_STATUS_FLAG_AVAILABLE;
+    core_handler->handler_set_serving(core_handler, base, 1);
 
     return HARP_RESULT_OK;
 }
@@ -325,12 +325,12 @@ HarpResult term_logger(HarpCoreHandler *core_handler, HarpHandlerBase *base) {
     handler->buf_index = 0;
     handler->last_time = 0;
 
-    handler->handler._base.status &= ~HARP_STATUS_FLAG_AVAILABLE;
+    handler->pub._base.status &= ~HARP_STATUS_FLAG_SERVING;
 
-    handler->handler.log = logger_fallback_log;
-    handler->handler.logf = logger_fallback_logf;
+    handler->pub.log = logger_fallback_log;
+    handler->pub.logf = logger_fallback_logf;
 
-    handler->handler._base.status |= HARP_STATUS_FLAG_AVAILABLE;
+    handler->pub._base.status |= HARP_STATUS_FLAG_SERVING;
     
     return HARP_RESULT_OK; // a cleanup should never fail.
 }

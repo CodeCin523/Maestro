@@ -10,6 +10,21 @@
 /*  WINDOW FUNCTIONS                                                                */
 /* ================================================================================ */
 
+static const char *const WINDOW_VULKAN_EXTENSIONS[] = {
+    "VK_KHR_surface",
+    "VK_KHR_win32_surface"
+};
+static const uint32_t WINDOW_VULKAN_EXTENSION_COUNT = 2;
+
+void window_get_vulkan_extensions(MaestroWindowHandler *h, uint32_t *out_count, const char **out_extensions) {
+    HARP_UNUSED(h);
+    *out_count = WINDOW_VULKAN_EXTENSION_COUNT;
+    if(out_extensions) {
+        for(uint32_t i = 0; i < WINDOW_VULKAN_EXTENSION_COUNT; ++i)
+            out_extensions[i] = WINDOW_VULKAN_EXTENSIONS[i];
+    }
+}
+
 void window_pump_messages(MaestroWindowHandler *h) {
     MSG msg;
     while(PeekMessageA(&msg, NULL, 0, 0, PM_REMOVE)) {
@@ -23,7 +38,7 @@ void window_pump_messages(MaestroWindowHandler *h) {
 /*  WINDOW HANDLER                                                                  */
 /* ================================================================================ */
 
-LRESULT CALLBACK win32_process_message(HWND hwnd, u32 msg, WPARAM w_param, LPARAM l_param) {
+LRESULT CALLBACK win32_process_message(HWND hwnd, UINT msg, WPARAM w_param, LPARAM l_param) {
     switch(msg) {
         case WM_ERASEBKGND:
             // Notify the OS that erasing will be handled by the application to prevent flicker.
@@ -88,10 +103,10 @@ HarpResult init_window(HarpCoreHandler *core_handler, HarpHandlerBase *base, Har
 
     MaestroWindowHandlerImpl *handler = (MaestroWindowHandlerImpl *)base;
 
-    if(core_handler->get_handler(
+    if(HARP_FAILED(core_handler->get_handler(
         core_handler,
-        &(HarpDependencyDesc){MAESTRO_LOGGER_HANDLER_NAME, 0, UINT32_MAX},
-        (HarpHandlerBase **) &handler->logger) != HARP_RESULT_OK)
+        &HARP_DEPENDENCY(MAESTRO_LOGGER_HANDLER_NAME, 0, UINT32_MAX),
+        (HarpHandlerBase **)&handler->logger)))
             return HARP_RESULT_FAILED;
 
     handler->h_instance = GetModuleHandleA(0);
@@ -113,18 +128,18 @@ HarpResult init_window(HarpCoreHandler *core_handler, HarpHandlerBase *base, Har
         return HARP_RESULT_FAILED;
     }
 
-    uint32_t client_x = CW_USEDEFAULT;
-    uint32_t client_y = CW_USEDEFAULT;
-    uint32_t client_width = window_creator.width;
-    uint32_t client_height = window_creator.height;
+    int client_x = CW_USEDEFAULT;
+    int client_y = CW_USEDEFAULT;
+    int client_width  = (int)window_creator.width;
+    int client_height = (int)window_creator.height;
 
-    uint32_t window_x = client_x;
-    uint32_t window_y = client_y;
-    uint32_t window_width = client_width;
-    uint32_t window_height = client_height;
+    int window_x = client_x;
+    int window_y = client_y;
+    int window_width  = client_width;
+    int window_height = client_height;
 
-    uint32_t window_style = WS_OVERLAPPED | WS_SYSMENU | WS_CAPTION;
-    uint32_t window_ex_style = WS_EX_APPWINDOW;
+    DWORD window_style    = WS_OVERLAPPED | WS_SYSMENU | WS_CAPTION;
+    DWORD window_ex_style = WS_EX_APPWINDOW;
 
     window_style |= WS_MAXIMIZEBOX;
     window_style |= WS_MINIMIZEBOX;
@@ -166,6 +181,7 @@ HarpResult init_window(HarpCoreHandler *core_handler, HarpHandlerBase *base, Har
     return HARP_RESULT_OK;
 }
 HarpResult term_window(HarpCoreHandler *core_handler, HarpHandlerBase *base) {
+    HARP_UNUSED(core_handler);
     MaestroWindowHandlerImpl *handler = (MaestroWindowHandlerImpl *)base;
 
     if(handler->hwnd) {

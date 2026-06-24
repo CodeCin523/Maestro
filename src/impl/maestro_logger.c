@@ -1,5 +1,6 @@
 #include "maestro_logger.h"
 
+#include <harp/utils/harp_helpers.h>
 #include <harp/utils/harp_platform.h>
 
 #include <stdlib.h>
@@ -150,7 +151,7 @@ static inline uint64_t logger_write_prefix(
 /* ================================================================================ */
 
 void logger_fallback_log(MaestroLoggerHandler *h, const MaestroLoggerLevel level, const HarpName name, const char *msg) {
-    MaestroLoggerHandlerImpl *impl = (MaestroLoggerHandlerImpl *)h;
+    MaestroLoggerHandlerImpl *impl = HARP_HANDLER_AS(MaestroLoggerHandlerImpl, h);
     const char *lvl = LOGGER_LEVEL_STR[level];
 
     char ts[LOGGER_TIME_SIZE + 1] = {0};
@@ -162,7 +163,7 @@ void logger_fallback_log(MaestroLoggerHandler *h, const MaestroLoggerLevel level
         printf("%s [%s] - %s\n", ts, lvl, msg);
 }
 void logger_fallback_logf(MaestroLoggerHandler *h, const MaestroLoggerLevel level, const HarpName name, const char *fmt, ...) {
-    MaestroLoggerHandlerImpl *impl = (MaestroLoggerHandlerImpl *)h;
+    MaestroLoggerHandlerImpl *impl = HARP_HANDLER_AS(MaestroLoggerHandlerImpl, h);
     const char *lvl = LOGGER_LEVEL_STR[level];
 
     char ts[LOGGER_TIME_SIZE + 1] = {0};
@@ -185,8 +186,8 @@ void logger_fallback_logf(MaestroLoggerHandler *h, const MaestroLoggerLevel leve
 
 
 void logger_log(MaestroLoggerHandler *h, const MaestroLoggerLevel level, const HarpName name, const char *msg) {
-    MaestroLoggerHandlerImpl *impl = (MaestroLoggerHandlerImpl *)h;
-    if(!impl || !impl->p_buf || !msg)
+    MaestroLoggerHandlerImpl *impl = HARP_HANDLER_AS(MaestroLoggerHandlerImpl, h);
+    if(!HARP_HANDLER_IS_VALID(impl) || !msg)
         return;
 
     char *buf = impl->p_buf;
@@ -216,8 +217,8 @@ void logger_log(MaestroLoggerHandler *h, const MaestroLoggerLevel level, const H
         logger_flush(h);
 }
 void logger_logf(MaestroLoggerHandler *h, const MaestroLoggerLevel level, const HarpName name, const char *fmt, ...) {
-    MaestroLoggerHandlerImpl *impl = (MaestroLoggerHandlerImpl *)h;
-    if(!impl || !impl->p_buf || !fmt)
+    MaestroLoggerHandlerImpl *impl = HARP_HANDLER_AS(MaestroLoggerHandlerImpl, h);
+    if(!HARP_HANDLER_IS_VALID(impl) || !fmt)
         return;
 
     char *buf = impl->p_buf;
@@ -255,9 +256,8 @@ void logger_logf(MaestroLoggerHandler *h, const MaestroLoggerLevel level, const 
 }
 
 void logger_flush(MaestroLoggerHandler *h) {
-    MaestroLoggerHandlerImpl *impl = (MaestroLoggerHandlerImpl *)h;
-
-    if(!impl || !impl->p_buf)
+    MaestroLoggerHandlerImpl *impl = HARP_HANDLER_AS(MaestroLoggerHandlerImpl, h);
+    if(!HARP_HANDLER_IS_VALID(impl))
         return;
 
 #if HARP_PLATFORM_LINUX
@@ -315,6 +315,13 @@ HarpResult term_logger(HarpCoreHandler *core_handler, HarpHandlerBase *base) {
     // harp guarenty we are in the correct state to clear, but it do not guarenty it was correctly clean if it fail init
     MaestroLoggerHandlerImpl *handler = (MaestroLoggerHandlerImpl *)base;
 
+    core_handler->handler_set_serving(core_handler, base, 0);
+
+    handler->pub.log = logger_fallback_log;
+    handler->pub.logf = logger_fallback_logf;
+
+    core_handler->handler_set_serving(core_handler, base, 1);
+
     if(handler->p_buf != NULL) {
         logger_flush((MaestroLoggerHandler *)base);
         free(handler->p_buf);
@@ -324,13 +331,6 @@ HarpResult term_logger(HarpCoreHandler *core_handler, HarpHandlerBase *base) {
     handler->buf_size = 0;
     handler->buf_index = 0;
     handler->last_time = 0;
-
-    handler->pub._base.status &= ~HARP_STATUS_FLAG_SERVING;
-
-    handler->pub.log = logger_fallback_log;
-    handler->pub.logf = logger_fallback_logf;
-
-    handler->pub._base.status |= HARP_STATUS_FLAG_SERVING;
     
     return HARP_RESULT_OK; // a cleanup should never fail.
 }

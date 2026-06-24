@@ -37,6 +37,7 @@ struct MaestroWindowHandler {
     HarpHandlerBase _base;
 
     void (*pump_messages)(MaestroWindowHandler *h);
+    void (*get_vulkan_extensions)(MaestroWindowHandler *h, uint32_t *out_count, const char **out_extensions);
 };
 
 

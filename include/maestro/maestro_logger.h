@@ -6,6 +6,7 @@ extern "C" {
 #endif
 
 #include <harp/harp.h>
+#include <harp/utils/harp_build.h>
 #include <harp/utils/harp_version.h>
 
 
@@ -55,7 +56,7 @@ struct MaestroLoggerHandler {
 
 #define MAESTRO_LOGGER_INFO_ENABLED 1
 #define MAESTRO_LOGGER_WARN_ENABLED 1
-#define MAESTRO_LOGGER_DEBUG_ENABLED 1
+#define MAESTRO_LOGGER_DEBUG_ENABLED HARP_DEBUG
 #define MAESTRO_LOGGER_ERROR_ENABLED 1
 #define MAESTRO_LOGGER_FATAL_ENABLED 1
 

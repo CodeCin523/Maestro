@@ -17,6 +17,7 @@ cmake_minimum_required(VERSION 3.17)
   # Dependencies
   # ------------------------------------------------------------------------------
   find_package(Harp REQUIRED)
+  find_package(Vulkan REQUIRED)
 
   if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
       find_package(PkgConfig REQUIRED)
@@ -57,6 +58,7 @@ cmake_minimum_required(VERSION 3.17)
       Maestro PRIVATE
       src/maestro_package.c
       src/impl/maestro_logger.c
+      src/impl/maestro_vulkan.c
   )
 
   if(WIN32)
@@ -79,6 +81,7 @@ cmake_minimum_required(VERSION 3.17)
   target_link_libraries(
       Maestro PUBLIC
       MaestroInterface
+      Vulkan::Vulkan
   )
 
   if(CMAKE_SYSTEM_NAME STREQUAL "Linux")

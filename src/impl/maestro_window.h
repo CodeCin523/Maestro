@@ -4,6 +4,7 @@
 #include <maestro/maestro_logger.h>
 #include <maestro/maestro_window.h>
 
+#include <harp/utils/harp_helpers.h>
 #include <harp/utils/harp_platform.h>
 
 #if HARP_PLATFORM_WINDOWS
@@ -36,6 +37,7 @@ typedef struct MaestroWindowHandlerImpl {
 
 
 void window_pump_messages(MaestroWindowHandler *h);
+void window_get_vulkan_extensions(MaestroWindowHandler *h, uint32_t *out_count, const char **out_extensions);
 
 
 HarpResult init_window(HarpCoreHandler *core_handler, HarpHandlerBase *base, HarpCreatorBase *creator);

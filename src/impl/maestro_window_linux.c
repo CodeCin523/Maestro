@@ -30,6 +30,21 @@ static xcb_atom_t get_atom(xcb_connection_t *conn, const char *name) {
 /*  WINDOW FUNCTIONS                                                                */
 /* ================================================================================ */
 
+static const char *const WINDOW_VULKAN_EXTENSIONS[] = {
+    "VK_KHR_surface",
+    "VK_KHR_xcb_surface"
+};
+static const uint32_t WINDOW_VULKAN_EXTENSION_COUNT = 2;
+
+void window_get_vulkan_extensions(MaestroWindowHandler *h, uint32_t *out_count, const char **out_extensions) {
+    HARP_UNUSED(h);
+    *out_count = WINDOW_VULKAN_EXTENSION_COUNT;
+    if(out_extensions) {
+        for(uint32_t i = 0; i < WINDOW_VULKAN_EXTENSION_COUNT; ++i)
+            out_extensions[i] = WINDOW_VULKAN_EXTENSIONS[i];
+    }
+}
+
 void window_pump_messages(MaestroWindowHandler *h) {
     MaestroWindowHandlerImpl *handler = (MaestroWindowHandlerImpl *)h;
 
@@ -100,10 +115,10 @@ HarpResult init_window(HarpCoreHandler *core_handler, HarpHandlerBase *base, Har
 
     MaestroWindowHandlerImpl *handler = (MaestroWindowHandlerImpl *)base;
 
-    if(core_handler->get_handler(
+    if(HARP_FAILED(core_handler->get_handler(
         core_handler,
-        &(HarpDependencyDesc){MAESTRO_LOGGER_HANDLER_NAME, 0, UINT32_MAX},
-        (HarpHandlerBase **) &handler->logger) != HARP_RESULT_OK)
+        &HARP_DEPENDENCY(MAESTRO_LOGGER_HANDLER_NAME, 0, UINT32_MAX),
+        (HarpHandlerBase **)&handler->logger)))
             return HARP_RESULT_FAILED;
 
     // Open the X display via Xlib, then bridge to an XCB connection.
@@ -194,7 +209,7 @@ HarpResult init_window(HarpCoreHandler *core_handler, HarpHandlerBase *base, Har
 }
 
 HarpResult term_window(HarpCoreHandler *core_handler, HarpHandlerBase *base) {
-    (void)core_handler;
+    HARP_UNUSED(core_handler);
 
     MaestroWindowHandlerImpl *handler = (MaestroWindowHandlerImpl *)base;
 

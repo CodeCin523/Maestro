@@ -75,7 +75,7 @@ cmake_minimum_required(VERSION 3.17)
 
   target_compile_features(
       Maestro PUBLIC
-      c_std_23
+      c_std_11
   )
 
   target_link_libraries(
@@ -110,6 +110,7 @@ cmake_minimum_required(VERSION 3.17)
   # Tests
   # ------------------------------------------------------------------------------
   if(MAESTRO_BUILD_TESTS)
+      enable_testing()
       add_subdirectory(tests)
   endif()
 

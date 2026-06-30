@@ -22,6 +22,11 @@ typedef struct MaestroWindowHandlerImpl {
     MaestroWindowHandler pub;
 
     MaestroLoggerHandler *logger;
+
+    /* ground-truth held state, persists across frames; keys[] is derived from it  */
+    uint8_t held[MAESTRO_KEY_COUNT];
+    uint8_t held_mouse;
+
 #if HARP_PLATFORM_WINDOWS
     HINSTANCE h_instance;
     HWND hwnd;

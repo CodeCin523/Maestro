@@ -8,6 +8,43 @@
 
 
 /* ================================================================================ */
+/*  KEY MAPPING                                                                     */
+/* ================================================================================ */
+
+static MaestroKey keysym_to_maestro(KeySym sym) {
+    if(sym >= XK_a && sym <= XK_z)    return (MaestroKey)(MAESTRO_KEY_A  + (sym - XK_a));
+    if(sym >= XK_A && sym <= XK_Z)    return (MaestroKey)(MAESTRO_KEY_A  + (sym - XK_A));
+    if(sym >= XK_0 && sym <= XK_9)    return (MaestroKey)(MAESTRO_KEY_0  + (sym - XK_0));
+    if(sym >= XK_F1 && sym <= XK_F12) return (MaestroKey)(MAESTRO_KEY_F1 + (sym - XK_F1));
+
+    switch(sym) {
+        case XK_space:     return MAESTRO_KEY_SPACE;
+        case XK_Return:    return MAESTRO_KEY_ENTER;
+        case XK_Escape:    return MAESTRO_KEY_ESCAPE;
+        case XK_Tab:       return MAESTRO_KEY_TAB;
+        case XK_BackSpace: return MAESTRO_KEY_BACKSPACE;
+        case XK_Delete:    return MAESTRO_KEY_DELETE;
+        case XK_Insert:    return MAESTRO_KEY_INSERT;
+        case XK_Home:      return MAESTRO_KEY_HOME;
+        case XK_End:       return MAESTRO_KEY_END;
+        case XK_Page_Up:   return MAESTRO_KEY_PAGE_UP;
+        case XK_Page_Down: return MAESTRO_KEY_PAGE_DOWN;
+        case XK_Up:        return MAESTRO_KEY_UP;
+        case XK_Down:      return MAESTRO_KEY_DOWN;
+        case XK_Left:      return MAESTRO_KEY_LEFT;
+        case XK_Right:     return MAESTRO_KEY_RIGHT;
+        case XK_Shift_L:   return MAESTRO_KEY_LEFT_SHIFT;
+        case XK_Shift_R:   return MAESTRO_KEY_RIGHT_SHIFT;
+        case XK_Control_L: return MAESTRO_KEY_LEFT_CTRL;
+        case XK_Control_R: return MAESTRO_KEY_RIGHT_CTRL;
+        case XK_Alt_L:     return MAESTRO_KEY_LEFT_ALT;
+        case XK_Alt_R:     return MAESTRO_KEY_RIGHT_ALT;
+        default:           return MAESTRO_KEY_COUNT;
+    }
+}
+
+
+/* ================================================================================ */
 /*  HELPERS                                                                         */
 /* ================================================================================ */
 
@@ -50,44 +87,61 @@ void window_pump_messages(MaestroWindowHandler *h) {
 
     if(!handler->connection) return;
 
+    for(uint32_t i = 0; i < MAESTRO_KEY_COUNT; ++i)
+        h->keys[i] = (uint8_t)(((h->keys[i] & MAESTRO_INPUT_CURRENT) << 1) | handler->held[i]);
+
+    h->mouse_buttons = (uint8_t)(((h->mouse_buttons & 0x07u) << 3) | handler->held_mouse);
+    h->prev_mouse_x  = h->mouse_x;
+    h->prev_mouse_y  = h->mouse_y;
+
     xcb_generic_event_t *event;
-    while((event = xcb_poll_for_event(handler->connection)) != 0) {
+    while((event = xcb_poll_for_event(handler->connection)) != NULL) {
         switch(event->response_type & ~0x80) {
             case XCB_CLIENT_MESSAGE: {
                 xcb_client_message_event_t *cm = (xcb_client_message_event_t *)event;
-
-                if(cm->data.data32[0] == handler->wm_delete_win) {
-                    // TODO: Fire an event for the application to quit.
-                }
+                if(cm->data.data32[0] == handler->wm_delete_win)
+                    h->should_close = 1;
             } break;
 
             case XCB_CONFIGURE_NOTIFY: {
-                // xcb_configure_notify_event_t *cfg = (xcb_configure_notify_event_t *)event;
-                // uint32_t width = cfg->width;
-                // uint32_t height = cfg->height;
-
-                // TODO: Fire an event for window resize.
+                xcb_configure_notify_event_t *cfg = (xcb_configure_notify_event_t *)event;
+                h->width  = cfg->width;
+                h->height = cfg->height;
             } break;
 
             case XCB_KEY_PRESS:
             case XCB_KEY_RELEASE: {
-                // xcb_key_press_event_t *kp = (xcb_key_press_event_t *)event;
-                // uint8_t pressed = (event->response_type & ~0x80) == XCB_KEY_PRESS;
-                // TODO: input processing
+                xcb_key_press_event_t *kp = (xcb_key_press_event_t *)event;
+                uint8_t pressed = (event->response_type & ~0x80) == XCB_KEY_PRESS;
+                KeySym sym = XkbKeycodeToKeysym(handler->display, kp->detail, 0, 0);
+                MaestroKey key = keysym_to_maestro(sym);
+                if(key < MAESTRO_KEY_COUNT) {
+                    if(pressed) { handler->held[key] = 1; h->keys[key] |=  MAESTRO_INPUT_CURRENT; }
+                    else        { handler->held[key] = 0; h->keys[key] &= ~MAESTRO_INPUT_CURRENT; }
+                }
             } break;
 
             case XCB_MOTION_NOTIFY: {
-                // xcb_motion_notify_event_t *motion = (xcb_motion_notify_event_t *)event;
-                // int32_t x_pos = motion->event_x;
-                // int32_t y_pos = motion->event_y;
-                // TODO: input processing
+                xcb_motion_notify_event_t *motion = (xcb_motion_notify_event_t *)event;
+                h->mouse_x = motion->event_x;
+                h->mouse_y = motion->event_y;
             } break;
 
             case XCB_BUTTON_PRESS:
             case XCB_BUTTON_RELEASE: {
-                // xcb_button_press_event_t *bp = (xcb_button_press_event_t *)event;
-                // uint8_t pressed = (event->response_type & ~0x80) == XCB_BUTTON_PRESS;
-                // TODO: input processing
+                xcb_button_press_event_t *bp = (xcb_button_press_event_t *)event;
+                uint8_t pressed = (event->response_type & ~0x80) == XCB_BUTTON_PRESS;
+                uint8_t mask = 0;
+                switch(bp->detail) {
+                    case 1: mask = MAESTRO_MOUSE_LEFT;   break;
+                    case 2: mask = MAESTRO_MOUSE_MIDDLE; break;
+                    case 3: mask = MAESTRO_MOUSE_RIGHT;  break;
+                    default: break;
+                }
+                if(mask) {
+                    if(pressed) { handler->held_mouse |= mask;  h->mouse_buttons |=  mask; }
+                    else        { handler->held_mouse &= ~mask; h->mouse_buttons &= ~mask; }
+                }
             } break;
 
             default:
@@ -115,10 +169,10 @@ HarpResult init_window(HarpCoreHandler *core_handler, HarpHandlerBase *base, Har
 
     MaestroWindowHandlerImpl *handler = (MaestroWindowHandlerImpl *)base;
 
-    if(HARP_FAILED(core_handler->get_handler(
+    if(core_handler->get_handler(
         core_handler,
         &HARP_DEPENDENCY(MAESTRO_LOGGER_HANDLER_NAME, 0, UINT32_MAX),
-        (HarpHandlerBase **)&handler->logger)))
+        (HarpHandlerBase **)&handler->logger) != HARP_RESULT_OK)
             return HARP_RESULT_FAILED;
 
     // Open the X display via Xlib, then bridge to an XCB connection.
@@ -204,6 +258,18 @@ HarpResult init_window(HarpCoreHandler *core_handler, HarpHandlerBase *base, Har
 
     xcb_map_window(handler->connection, handler->window);
     xcb_flush(handler->connection);
+
+    handler->pub.width         = window_creator.width;
+    handler->pub.height        = window_creator.height;
+    handler->pub.should_close  = 0;
+    handler->pub.mouse_x       = 0;
+    handler->pub.mouse_y       = 0;
+    handler->pub.prev_mouse_x  = 0;
+    handler->pub.prev_mouse_y  = 0;
+    handler->pub.mouse_buttons = 0;
+    memset(handler->pub.keys, 0, sizeof(handler->pub.keys));
+    memset(handler->held, 0, sizeof(handler->held));
+    handler->held_mouse = 0;
 
     return HARP_RESULT_OK;
 }

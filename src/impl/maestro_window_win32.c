@@ -4,6 +4,40 @@
 #if HARP_PLATFORM_WINDOWS
 
 #include <windowsx.h>
+#include <string.h>
+
+
+/* ================================================================================ */
+/*  KEY MAPPING                                                                     */
+/* ================================================================================ */
+
+static MaestroKey win32_vk_to_maestro(UINT vk, uint8_t extended, uint8_t scan) {
+    if(vk >= 'A' && vk <= 'Z')      return (MaestroKey)(MAESTRO_KEY_A  + (vk - 'A'));
+    if(vk >= '0' && vk <= '9')      return (MaestroKey)(MAESTRO_KEY_0  + (vk - '0'));
+    if(vk >= VK_F1 && vk <= VK_F12) return (MaestroKey)(MAESTRO_KEY_F1 + (vk - VK_F1));
+
+    switch(vk) {
+        case VK_SPACE:   return MAESTRO_KEY_SPACE;
+        case VK_RETURN:  return MAESTRO_KEY_ENTER;
+        case VK_ESCAPE:  return MAESTRO_KEY_ESCAPE;
+        case VK_TAB:     return MAESTRO_KEY_TAB;
+        case VK_BACK:    return MAESTRO_KEY_BACKSPACE;
+        case VK_DELETE:  return MAESTRO_KEY_DELETE;
+        case VK_INSERT:  return MAESTRO_KEY_INSERT;
+        case VK_HOME:    return MAESTRO_KEY_HOME;
+        case VK_END:     return MAESTRO_KEY_END;
+        case VK_PRIOR:   return MAESTRO_KEY_PAGE_UP;
+        case VK_NEXT:    return MAESTRO_KEY_PAGE_DOWN;
+        case VK_UP:      return MAESTRO_KEY_UP;
+        case VK_DOWN:    return MAESTRO_KEY_DOWN;
+        case VK_LEFT:    return MAESTRO_KEY_LEFT;
+        case VK_RIGHT:   return MAESTRO_KEY_RIGHT;
+        case VK_SHIFT:   return scan == 0x36 ? MAESTRO_KEY_RIGHT_SHIFT : MAESTRO_KEY_LEFT_SHIFT;
+        case VK_CONTROL: return extended     ? MAESTRO_KEY_RIGHT_CTRL  : MAESTRO_KEY_LEFT_CTRL;
+        case VK_MENU:    return extended     ? MAESTRO_KEY_RIGHT_ALT   : MAESTRO_KEY_LEFT_ALT;
+        default:         return MAESTRO_KEY_COUNT;
+    }
+}
 
 
 /* ================================================================================ */
@@ -26,8 +60,19 @@ void window_get_vulkan_extensions(MaestroWindowHandler *h, uint32_t *out_count, 
 }
 
 void window_pump_messages(MaestroWindowHandler *h) {
+    MaestroWindowHandlerImpl *handler = (MaestroWindowHandlerImpl *)h;
+
+    if(!handler->hwnd) return;
+
+    for(uint32_t i = 0; i < MAESTRO_KEY_COUNT; ++i)
+        h->keys[i] = (uint8_t)(((h->keys[i] & MAESTRO_INPUT_CURRENT) << 1) | handler->held[i]);
+
+    h->mouse_buttons = (uint8_t)(((h->mouse_buttons & 0x07u) << 3) | handler->held_mouse);
+    h->prev_mouse_x  = h->mouse_x;
+    h->prev_mouse_y  = h->mouse_y;
+
     MSG msg;
-    while(PeekMessageA(&msg, NULL, 0, 0, PM_REMOVE)) {
+    while(PeekMessageA(&msg, handler->hwnd, 0, 0, PM_REMOVE)) {
         TranslateMessage(&msg);
         DispatchMessageA(&msg);
     }
@@ -39,43 +84,48 @@ void window_pump_messages(MaestroWindowHandler *h) {
 /* ================================================================================ */
 
 LRESULT CALLBACK win32_process_message(HWND hwnd, UINT msg, WPARAM w_param, LPARAM l_param) {
+    if(msg == WM_NCCREATE) {
+        CREATESTRUCTA *cs = (CREATESTRUCTA *)l_param;
+        SetWindowLongPtrA(hwnd, GWLP_USERDATA, (LONG_PTR)cs->lpCreateParams);
+        return DefWindowProcA(hwnd, msg, w_param, l_param);
+    }
+
+    MaestroWindowHandlerImpl *handler = (MaestroWindowHandlerImpl *)GetWindowLongPtrA(hwnd, GWLP_USERDATA);
+
     switch(msg) {
         case WM_ERASEBKGND:
             // Notify the OS that erasing will be handled by the application to prevent flicker.
             return 1;
         case WM_CLOSE:
-            // TODO: Fire an event for the application to quit.
-            return 0;
-        case WM_DESTROY:
-            PostQuitMessage(0);
+            if(handler) handler->pub.should_close = 1;
             return 0;
         case WM_SIZE: {
-            // RECT r;
-            // GetClientRect(hwnd, &r);
-            // uint32_t width = r.width - r.left;
-            // uint32_t height = r.bottom - r.top;
-
-            // TODO: Fire an event for window resize.
+            if(handler) {
+                handler->pub.width  = LOWORD(l_param);
+                handler->pub.height = HIWORD(l_param);
+            }
         } break;
         case WM_KEYDOWN:
         case WM_SYSKEYDOWN:
         case WM_KEYUP:
         case WM_SYSKEYUP: {
-            // uint8_t pressed = (msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN);
-            // TODO: input processing
+            if(!handler) break;
+            uint8_t    pressed  = (msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN);
+            uint8_t    extended = (uint8_t)((l_param >> 24) & 1);
+            uint8_t    scan     = (uint8_t)((l_param >> 16) & 0xFF);
+            MaestroKey key      = win32_vk_to_maestro((UINT)w_param, extended, scan);
+            if(key < MAESTRO_KEY_COUNT) {
+                if(pressed) { handler->held[key] = 1; handler->pub.keys[key] |=  MAESTRO_INPUT_CURRENT; }
+                else        { handler->held[key] = 0; handler->pub.keys[key] &= ~MAESTRO_INPUT_CURRENT; }
+            }
         } break;
         case WM_MOUSEMOVE: {
-            // int32_t x_pos = GET_X_LPARAM(l_param);
-            // int32_t y_pos = GET_Y_LPARAM(y_param);
-            // TODO: input processing
+            if(!handler) break;
+            handler->pub.mouse_x = GET_X_LPARAM(l_param);
+            handler->pub.mouse_y = GET_Y_LPARAM(l_param);
         } break;
         case WM_MOUSEWHEEL: {
-            // int32_t z_delta = GET_WHEEL_DELTA_WPARAM(w_param);
-            // if(z_delta != 0) {
-            //     // Flatten the input to an SO-independent
-            //     z_delta = (z_delta < 0) ? -1 : 1;
-            // }
-            // TODO: input processing
+            // TODO: scroll input
         } break;
         case WM_LBUTTONDOWN:
         case WM_MBUTTONDOWN:
@@ -83,8 +133,14 @@ LRESULT CALLBACK win32_process_message(HWND hwnd, UINT msg, WPARAM w_param, LPAR
         case WM_LBUTTONUP:
         case WM_MBUTTONUP:
         case WM_RBUTTONUP: {
-            // uint8_t pressed = msg == WM_LBUTTONDOWN || msg == WM_MBUTTONDOWN || msg == WM_RBUTTONDOWN;
-            // TODO: input processing
+            if(!handler) break;
+            uint8_t pressed = (msg == WM_LBUTTONDOWN || msg == WM_MBUTTONDOWN || msg == WM_RBUTTONDOWN);
+            uint8_t mask    = 0;
+            if     (msg == WM_LBUTTONDOWN || msg == WM_LBUTTONUP) mask = MAESTRO_MOUSE_LEFT;
+            else if(msg == WM_RBUTTONDOWN || msg == WM_RBUTTONUP) mask = MAESTRO_MOUSE_RIGHT;
+            else if(msg == WM_MBUTTONDOWN || msg == WM_MBUTTONUP) mask = MAESTRO_MOUSE_MIDDLE;
+            if(pressed) { handler->held_mouse |= mask;  handler->pub.mouse_buttons |=  mask; }
+            else        { handler->held_mouse &= ~mask; handler->pub.mouse_buttons &= ~mask; }
         } break;
     }
 
@@ -103,10 +159,10 @@ HarpResult init_window(HarpCoreHandler *core_handler, HarpHandlerBase *base, Har
 
     MaestroWindowHandlerImpl *handler = (MaestroWindowHandlerImpl *)base;
 
-    if(HARP_FAILED(core_handler->get_handler(
+    if(core_handler->get_handler(
         core_handler,
         &HARP_DEPENDENCY(MAESTRO_LOGGER_HANDLER_NAME, 0, UINT32_MAX),
-        (HarpHandlerBase **)&handler->logger)))
+        (HarpHandlerBase **)&handler->logger) != HARP_RESULT_OK)
             return HARP_RESULT_FAILED;
 
     handler->h_instance = GetModuleHandleA(0);
@@ -160,23 +216,32 @@ HarpResult init_window(HarpCoreHandler *core_handler, HarpHandlerBase *base, Har
     HWND handle = CreateWindowExA(
         window_ex_style, "MaestroWindowClass", window_creator.title,
         window_style, window_x, window_y, window_width, window_height,
-        0, 0, handler->h_instance, 0);
+        0, 0, handler->h_instance, handler);
     
     if(handle == 0) {
         MAESTRO_LOG_FATAL(handler->logger, base->name, "Window creation failed");
         return HARP_RESULT_FAILED;
-    } else {
-        handler->hwnd = handle;
     }
+
+    handler->hwnd = handle;
+
+    handler->pub.width         = (uint32_t)client_width;
+    handler->pub.height        = (uint32_t)client_height;
+    handler->pub.should_close  = 0;
+    handler->pub.mouse_x       = 0;
+    handler->pub.mouse_y       = 0;
+    handler->pub.prev_mouse_x  = 0;
+    handler->pub.prev_mouse_y  = 0;
+    handler->pub.mouse_buttons = 0;
+    memset(handler->pub.keys, 0, sizeof(handler->pub.keys));
+    memset(handler->held, 0, sizeof(handler->held));
+    handler->held_mouse = 0;
 
     uint32_t should_activate = 1; // If the window should not accept input, this should be false.
     int32_t show_window_command_flags = should_activate ? SW_SHOW : SW_SHOWNOACTIVE;
     // If initially minimized, use SW_MINIMIZE : SW_SHOWMINNOACTIVE
     // If initially maximized, use SW_SHOWMAXIMIZED : SW_MAXIMIZE
     ShowWindow(handler->hwnd, show_window_command_flags);
-
-
-
 
     return HARP_RESULT_OK;
 }
@@ -187,6 +252,10 @@ HarpResult term_window(HarpCoreHandler *core_handler, HarpHandlerBase *base) {
     if(handler->hwnd) {
         DestroyWindow(handler->hwnd);
         handler->hwnd = 0;
+    }
+
+    if(handler->h_instance) {
+        UnregisterClassA("MaestroWindowClass", handler->h_instance);
     }
 
     return HARP_RESULT_OK;

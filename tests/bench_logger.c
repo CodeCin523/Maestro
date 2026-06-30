@@ -1,4 +1,4 @@
-#include <harp/harp_core.h>
+#include <harp/harp_api.h>
 
 #include <maestro/maestro.h>
 #include <maestro/maestro_logger.h>
@@ -96,10 +96,10 @@ static MaestroLoggerHandler *g_logger  = NULL;
 /* ========================================================= */
 
 static void setup(char *argv0) {
-    HarpRuntimeCreator creator = { .argv0 = argv0 };
+    HarpRuntimeDesc desc = { .executable_path = argv0 };
 
     assert_harp(
-        harp_initialize((const HarpCreatorBase *)&creator, &g_runtime),
+        harp_initialize(&desc, &g_runtime),
         "harp_initialize"
     );
 

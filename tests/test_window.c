@@ -1,4 +1,4 @@
-#include <harp/harp_core.h>
+#include <harp/harp_api.h>
 
 #include <maestro/maestro.h>
 #include <maestro/maestro_window.h>
@@ -59,12 +59,12 @@ static MaestroWindowHandler *g_window  = NULL;
 static void test_runtime_init(char *argv0) {
     TEST_MARKER("RUNTIME", "INIT");
 
-    HarpRuntimeCreator creator = {
-        .argv0 = argv0
+    HarpRuntimeDesc desc = {
+        .executable_path = argv0
     };
 
     assert_harp(
-        harp_initialize((const HarpCreatorBase *)&creator, &g_runtime),
+        harp_initialize(&desc, &g_runtime),
         "Failed to init Harp runtime"
     );
 
@@ -255,6 +255,83 @@ static void test_window_reinit_with_custom_creator(void) {
 }
 
 /* ========================================================= */
+/* INPUT LOOP — runs until the window is closed               */
+/* ========================================================= */
+
+static const char *key_name(MaestroKey k) {
+    static const char *letters[] = {
+        "A","B","C","D","E","F","G","H","I","J","K","L","M",
+        "N","O","P","Q","R","S","T","U","V","W","X","Y","Z"
+    };
+    static const char *digits[] = { "0","1","2","3","4","5","6","7","8","9" };
+    static const char *fn[]     = { "F1","F2","F3","F4","F5","F6","F7","F8","F9","F10","F11","F12" };
+
+    if(k >= MAESTRO_KEY_A  && k <= MAESTRO_KEY_Z)   return letters[k - MAESTRO_KEY_A];
+    if(k >= MAESTRO_KEY_0  && k <= MAESTRO_KEY_9)   return digits[k - MAESTRO_KEY_0];
+    if(k >= MAESTRO_KEY_F1 && k <= MAESTRO_KEY_F12) return fn[k - MAESTRO_KEY_F1];
+
+    switch(k) {
+        case MAESTRO_KEY_SPACE:        return "SPACE";
+        case MAESTRO_KEY_ENTER:        return "ENTER";
+        case MAESTRO_KEY_ESCAPE:       return "ESCAPE";
+        case MAESTRO_KEY_TAB:          return "TAB";
+        case MAESTRO_KEY_BACKSPACE:    return "BACKSPACE";
+        case MAESTRO_KEY_DELETE:       return "DELETE";
+        case MAESTRO_KEY_INSERT:       return "INSERT";
+        case MAESTRO_KEY_HOME:         return "HOME";
+        case MAESTRO_KEY_END:          return "END";
+        case MAESTRO_KEY_PAGE_UP:      return "PAGE_UP";
+        case MAESTRO_KEY_PAGE_DOWN:    return "PAGE_DOWN";
+        case MAESTRO_KEY_UP:           return "UP";
+        case MAESTRO_KEY_DOWN:         return "DOWN";
+        case MAESTRO_KEY_LEFT:         return "LEFT";
+        case MAESTRO_KEY_RIGHT:        return "RIGHT";
+        case MAESTRO_KEY_LEFT_SHIFT:   return "LEFT_SHIFT";
+        case MAESTRO_KEY_RIGHT_SHIFT:  return "RIGHT_SHIFT";
+        case MAESTRO_KEY_LEFT_CTRL:    return "LEFT_CTRL";
+        case MAESTRO_KEY_RIGHT_CTRL:   return "RIGHT_CTRL";
+        case MAESTRO_KEY_LEFT_ALT:     return "LEFT_ALT";
+        case MAESTRO_KEY_RIGHT_ALT:    return "RIGHT_ALT";
+        default:                       return "?";
+    }
+}
+
+static void test_window_run_until_close(void) {
+    TEST_MARKER("WINDOW", "RUN_UNTIL_CLOSE");
+    printf("    close the window to end the test...\n");
+
+    const int frame_ms = 16;
+
+    while(!g_window->should_close) {
+        g_window->pump_messages(g_window);
+
+        for(MaestroKey k = 0; k < MAESTRO_KEY_COUNT; ++k) {
+            if(MAESTRO_KEY_WAS_UP(g_window, k) && MAESTRO_KEY_DOWN(g_window, k))
+                printf("    KEY PRESS   %s\n", key_name(k));
+            if(MAESTRO_KEY_WAS_DOWN(g_window, k) && MAESTRO_KEY_UP(g_window, k))
+                printf("    KEY RELEASE %s\n", key_name(k));
+        }
+
+        if(MAESTRO_MOUSE_WAS_UP(g_window, MAESTRO_MOUSE_LEFT) && MAESTRO_MOUSE_DOWN(g_window, MAESTRO_MOUSE_LEFT))
+            printf("    MOUSE LEFT  PRESS   (%d, %d)\n", g_window->mouse_x, g_window->mouse_y);
+        if(MAESTRO_MOUSE_WAS_DOWN(g_window, MAESTRO_MOUSE_LEFT) && MAESTRO_MOUSE_UP(g_window, MAESTRO_MOUSE_LEFT))
+            printf("    MOUSE LEFT  RELEASE (%d, %d)\n", g_window->mouse_x, g_window->mouse_y);
+
+        if(MAESTRO_MOUSE_WAS_UP(g_window, MAESTRO_MOUSE_RIGHT) && MAESTRO_MOUSE_DOWN(g_window, MAESTRO_MOUSE_RIGHT))
+            printf("    MOUSE RIGHT PRESS   (%d, %d)\n", g_window->mouse_x, g_window->mouse_y);
+        if(MAESTRO_MOUSE_WAS_DOWN(g_window, MAESTRO_MOUSE_RIGHT) && MAESTRO_MOUSE_UP(g_window, MAESTRO_MOUSE_RIGHT))
+            printf("    MOUSE RIGHT RELEASE (%d, %d)\n", g_window->mouse_x, g_window->mouse_y);
+
+        if(g_window->mouse_x != g_window->prev_mouse_x || g_window->mouse_y != g_window->prev_mouse_y)
+            printf("    MOUSE MOVE  (%d, %d)\n", g_window->mouse_x, g_window->mouse_y);
+
+        test_sleep_ms(frame_ms);
+    }
+
+    TEST_MARKER("WINDOW", "RUN_UNTIL_CLOSE_DONE");
+}
+
+/* ========================================================= */
 /* FINAL TEARDOWN                                              */
 /* ========================================================= */
 
@@ -308,8 +385,8 @@ int main(int argc, char **argv) {
     test_window_reinit_with_custom_creator();
     test_window_pump_messages();
 
-    /* keep the resized/retitled window visible too */
-    test_window_stay_visible(3.0);
+    /* second window stays open until closed — prints all input */
+    test_window_run_until_close();
 
     test_window_final_term();
     test_runtime_term();

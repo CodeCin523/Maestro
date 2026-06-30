@@ -94,10 +94,10 @@ HarpResult init_vulkan_instance(HarpCoreHandler *core_handler, HarpHandlerBase *
 
     MaestroVulkanInstanceHandlerImpl *impl = HARP_HANDLER_AS(MaestroVulkanInstanceHandlerImpl, base);
 
-    if(HARP_FAILED(core_handler->get_handler(
+    if(core_handler->get_handler(
         core_handler,
         &HARP_DEPENDENCY(MAESTRO_LOGGER_HANDLER_NAME, 0, UINT32_MAX),
-        (HarpHandlerBase **)&impl->logger)))
+        (HarpHandlerBase **)&impl->logger) != HARP_RESULT_OK)
             return HARP_RESULT_FAILED;
 
     uint8_t validation = creator.enable_validation;
@@ -266,10 +266,10 @@ HarpResult create_vulkan_device(HarpCoreHandler *core_handler, HarpActorBase *ba
     MaestroVulkanDeviceActorImpl *impl = HARP_ACTOR_AS(MaestroVulkanDeviceActorImpl, base);
 
     HarpHandlerBase *handler_base = NULL;
-    if(HARP_FAILED(core_handler->get_handler(
+    if(core_handler->get_handler(
         core_handler,
         &HARP_DEPENDENCY(MAESTRO_VULKAN_INSTANCE_HANDLER_NAME, 0, UINT32_MAX),
-        &handler_base)))
+        &handler_base) != HARP_RESULT_OK)
             return HARP_RESULT_FAILED;
 
     MaestroVulkanInstanceHandlerImpl *instance = HARP_HANDLER_AS(MaestroVulkanInstanceHandlerImpl, handler_base);
@@ -426,10 +426,10 @@ HarpResult destroy_vulkan_device(HarpCoreHandler *core_handler, HarpActorBase *b
     // Return physical device to instance pool
     HarpHandlerBase *handler_base = NULL;
     if(impl->pub.physical_device != VK_NULL_HANDLE
-        && HARP_SUCCEEDED(core_handler->get_handler(
+        && core_handler->get_handler(
             core_handler,
             &HARP_DEPENDENCY(MAESTRO_VULKAN_INSTANCE_HANDLER_NAME, 0, UINT32_MAX),
-            &handler_base)))
+            &handler_base) == HARP_RESULT_OK)
     {
         MaestroVulkanInstanceHandlerImpl *instance = HARP_HANDLER_AS(MaestroVulkanInstanceHandlerImpl, handler_base);
         instance->devices[instance->device_count++] = impl->pub.physical_device;

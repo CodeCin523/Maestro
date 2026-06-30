@@ -109,6 +109,22 @@ void window_pump_messages(MaestroWindowHandler *h) {
                 h->height = cfg->height;
             } break;
 
+            case XCB_FOCUS_IN:
+                h->is_focused = 1;
+                break;
+
+            case XCB_FOCUS_OUT:
+                h->is_focused = 0;
+                break;
+
+            case XCB_MAP_NOTIFY:
+                h->is_minimized = 0;
+                break;
+
+            case XCB_UNMAP_NOTIFY:
+                h->is_minimized = 1;
+                break;
+
             case XCB_KEY_PRESS:
             case XCB_KEY_RELEASE: {
                 xcb_key_press_event_t *kp = (xcb_key_press_event_t *)event;
@@ -214,7 +230,8 @@ HarpResult init_window(HarpCoreHandler *core_handler, HarpHandlerBase *base, Har
         XCB_EVENT_MASK_BUTTON_PRESS |
         XCB_EVENT_MASK_BUTTON_RELEASE |
         XCB_EVENT_MASK_POINTER_MOTION |
-        XCB_EVENT_MASK_STRUCTURE_NOTIFY;
+        XCB_EVENT_MASK_STRUCTURE_NOTIFY |
+        XCB_EVENT_MASK_FOCUS_CHANGE;
 
     uint32_t value_list[] = { handler->screen->black_pixel, event_mask };
     uint32_t value_mask = XCB_CW_BACK_PIXEL | XCB_CW_EVENT_MASK;
@@ -262,6 +279,8 @@ HarpResult init_window(HarpCoreHandler *core_handler, HarpHandlerBase *base, Har
     handler->pub.width         = window_creator.width;
     handler->pub.height        = window_creator.height;
     handler->pub.should_close  = 0;
+    handler->pub.is_minimized  = 0;
+    handler->pub.is_focused    = 1;
     handler->pub.mouse_x       = 0;
     handler->pub.mouse_y       = 0;
     handler->pub.prev_mouse_x  = 0;

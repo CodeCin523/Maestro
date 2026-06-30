@@ -69,7 +69,7 @@ typedef struct MaestroWindowHandler MaestroWindowHandler;
 /* ================================================================================ */
 
 #define MAESTRO_WINDOW_HANDLER_NAME    "MaestroWindowHandler"
-#define MAESTRO_WINDOW_HANDLER_VERSION HARP_MAKE_VERSION(1,0,0)
+#define MAESTRO_WINDOW_HANDLER_VERSION HARP_MAKE_VERSION(1,1,0)
 
 struct MaestroWindowCreator {
     HarpCreatorBase _base;
@@ -97,6 +97,8 @@ struct MaestroWindowHandler {
     int32_t  prev_mouse_y;
 
     uint8_t  should_close;
+    uint8_t  is_minimized;
+    uint8_t  is_focused;
     uint32_t width;
     uint32_t height;
 };

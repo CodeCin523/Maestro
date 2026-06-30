@@ -101,10 +101,21 @@ LRESULT CALLBACK win32_process_message(HWND hwnd, UINT msg, WPARAM w_param, LPAR
             return 0;
         case WM_SIZE: {
             if(handler) {
-                handler->pub.width  = LOWORD(l_param);
-                handler->pub.height = HIWORD(l_param);
+                if(w_param == SIZE_MINIMIZED) {
+                    handler->pub.is_minimized = 1;
+                } else {
+                    handler->pub.is_minimized = 0;
+                    handler->pub.width  = LOWORD(l_param);
+                    handler->pub.height = HIWORD(l_param);
+                }
             }
         } break;
+        case WM_SETFOCUS:
+            if(handler) handler->pub.is_focused = 1;
+            break;
+        case WM_KILLFOCUS:
+            if(handler) handler->pub.is_focused = 0;
+            break;
         case WM_KEYDOWN:
         case WM_SYSKEYDOWN:
         case WM_KEYUP:
@@ -228,6 +239,8 @@ HarpResult init_window(HarpCoreHandler *core_handler, HarpHandlerBase *base, Har
     handler->pub.width         = (uint32_t)client_width;
     handler->pub.height        = (uint32_t)client_height;
     handler->pub.should_close  = 0;
+    handler->pub.is_minimized  = 0;
+    handler->pub.is_focused    = 1;
     handler->pub.mouse_x       = 0;
     handler->pub.mouse_y       = 0;
     handler->pub.prev_mouse_x  = 0;

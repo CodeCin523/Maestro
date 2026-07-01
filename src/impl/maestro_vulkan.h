@@ -27,6 +27,9 @@ typedef struct MaestroVulkanDeviceActorImpl {
 
     VkQueue  transfer_queue;
     uint32_t transfer_family;
+
+    VkQueue  present_queue;
+    uint32_t present_family;
 } MaestroVulkanDeviceActorImpl;
 
 

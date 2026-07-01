@@ -8,6 +8,8 @@ extern "C" {
 #include <harp/harp.h>
 #include <harp/utils/harp_version.h>
 
+#include <vulkan/vulkan_core.h>
+
 
 /* ================================================================================ */
 /*  TYPEDEF                                                                         */
@@ -69,7 +71,7 @@ typedef struct MaestroWindowHandler MaestroWindowHandler;
 /* ================================================================================ */
 
 #define MAESTRO_WINDOW_HANDLER_NAME    "MaestroWindowHandler"
-#define MAESTRO_WINDOW_HANDLER_VERSION HARP_MAKE_VERSION(1,1,0)
+#define MAESTRO_WINDOW_HANDLER_VERSION HARP_MAKE_VERSION(1,2,0)
 
 struct MaestroWindowCreator {
     HarpCreatorBase _base;
@@ -84,6 +86,7 @@ struct MaestroWindowHandler {
 
     void (*pump_messages)(MaestroWindowHandler *h);
     void (*get_vulkan_extensions)(MaestroWindowHandler *h, uint32_t *out_count, const char **out_extensions);
+    HarpResult (*create_vulkan_surface)(MaestroWindowHandler *h, VkInstance instance, VkSurfaceKHR *out_surface);
 
     // keys[k]: bit 0 = pressed this frame, bit 1 = pressed previous frame
     uint8_t  keys[MAESTRO_KEY_COUNT];

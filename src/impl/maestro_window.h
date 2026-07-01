@@ -38,12 +38,13 @@ typedef struct MaestroWindowHandlerImpl {
     xcb_atom_t wm_protocols;
     xcb_atom_t wm_delete_win;
 #endif
+
 } MaestroWindowHandlerImpl;
 
 
 void window_pump_messages(MaestroWindowHandler *h);
 void window_get_vulkan_extensions(MaestroWindowHandler *h, uint32_t *out_count, const char **out_extensions);
-
+HarpResult window_create_vulkan_surface(MaestroWindowHandler *h, VkInstance instance, VkSurfaceKHR *out_surface);
 
 HarpResult init_window(HarpCoreHandler *core_handler, HarpHandlerBase *base, HarpCreatorBase *creator);
 HarpResult term_window(HarpCoreHandler *core_handler, HarpHandlerBase *base);

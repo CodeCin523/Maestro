@@ -53,7 +53,7 @@ struct MaestroVulkanInstanceHandler {
 };
 
 #define MAESTRO_VULKAN_DEVICE_ACTOR_NAME "MaestroVulkanDeviceActor"
-#define MAESTRO_VULKAN_DEVICE_ACTOR_VERSION HARP_MAKE_VERSION(1,0,0)
+#define MAESTRO_VULKAN_DEVICE_ACTOR_VERSION HARP_MAKE_VERSION(1,1,0)
 
 struct MaestroVulkanDeviceCreator {
     HarpCreatorBase _base;
@@ -62,6 +62,8 @@ struct MaestroVulkanDeviceCreator {
 
     uint8_t request_compute;
     uint8_t request_transfer;
+
+    VkSurfaceKHR surface;
 };
 
 struct MaestroVulkanDeviceActor {
@@ -69,6 +71,8 @@ struct MaestroVulkanDeviceActor {
 
     VkPhysicalDevice physical_device;
     VkDevice device;
+
+    uint32_t present_family;
 };
 
 

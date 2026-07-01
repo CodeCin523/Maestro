@@ -259,6 +259,7 @@ HarpResult create_vulkan_device(HarpCoreHandler *core_handler, HarpActorBase *ba
         .pfn_score        = NULL,
         .request_compute  = 0,
         .request_transfer = 0,
+        .surface          = VK_NULL_HANDLE,
     };
     if(!(creator_base->flags & HARP_CREATOR_FLAG_DEFAULT_CREATOR))
         creator = *(MaestroVulkanDeviceCreator *)creator_base;
@@ -302,6 +303,32 @@ HarpResult create_vulkan_device(HarpCoreHandler *core_handler, HarpActorBase *ba
     instance->devices[best_index] = instance->devices[--instance->device_count];
     impl->pub.physical_device = best_device;
 
+    // If a surface is provided, verify VK_KHR_swapchain is supported by this device
+    if(creator.surface != VK_NULL_HANDLE) {
+        uint32_t ext_count = 0;
+        vkEnumerateDeviceExtensionProperties(best_device, NULL, &ext_count, NULL);
+
+        VkExtensionProperties *exts = malloc(ext_count * sizeof(VkExtensionProperties));
+        if(!exts)
+            return HARP_RESULT_OUT_OF_MEMORY;
+
+        vkEnumerateDeviceExtensionProperties(best_device, NULL, &ext_count, exts);
+
+        uint8_t has_swapchain = 0;
+        for(uint32_t i = 0; i < ext_count; ++i) {
+            if(strcmp(exts[i].extensionName, VK_KHR_SWAPCHAIN_EXTENSION_NAME) == 0) {
+                has_swapchain = 1;
+                break;
+            }
+        }
+        free(exts);
+
+        if(!has_swapchain) {
+            MAESTRO_LOG_FATAL(impl->logger, base->name, "Device does not support VK_KHR_swapchain");
+            return HARP_RESULT_FAILED;
+        }
+    }
+
     // Find queue families
     uint32_t family_count = 0;
     vkGetPhysicalDeviceQueueFamilyProperties(best_device, &family_count, NULL);
@@ -312,9 +339,11 @@ HarpResult create_vulkan_device(HarpCoreHandler *core_handler, HarpActorBase *ba
 
     vkGetPhysicalDeviceQueueFamilyProperties(best_device, &family_count, families);
 
-    uint32_t graphics_family = UINT32_MAX;
-    uint32_t compute_family  = UINT32_MAX;
-    uint32_t transfer_family = UINT32_MAX;
+    uint32_t graphics_family         = UINT32_MAX;
+    uint32_t compute_family          = UINT32_MAX;
+    uint32_t transfer_family         = UINT32_MAX;
+    uint32_t transfer_family_compute = UINT32_MAX; // COMPUTE|TRANSFER fallback
+    uint32_t present_family          = UINT32_MAX;
 
     for(uint32_t i = 0; i < family_count; ++i) {
         VkQueueFlags flags = families[i].queueFlags;
@@ -327,18 +356,34 @@ HarpResult create_vulkan_device(HarpCoreHandler *core_handler, HarpActorBase *ba
             && (flags & VK_QUEUE_COMPUTE_BIT) && !(flags & VK_QUEUE_GRAPHICS_BIT))
             compute_family = i;
 
-        // Prefer dedicated transfer (no graphics, no compute)
-        if(creator.request_transfer && transfer_family == UINT32_MAX
-            && (flags & VK_QUEUE_TRANSFER_BIT)
-            && !(flags & VK_QUEUE_GRAPHICS_BIT)
-            && !(flags & VK_QUEUE_COMPUTE_BIT))
-            transfer_family = i;
+        // Prefer transfer-only; accept compute+transfer as secondary
+        if(creator.request_transfer && (flags & VK_QUEUE_TRANSFER_BIT) && !(flags & VK_QUEUE_GRAPHICS_BIT)) {
+            if(transfer_family == UINT32_MAX && !(flags & VK_QUEUE_COMPUTE_BIT))
+                transfer_family = i;
+            else if(transfer_family_compute == UINT32_MAX && (flags & VK_QUEUE_COMPUTE_BIT))
+                transfer_family_compute = i;
+        }
+
+        if(creator.surface != VK_NULL_HANDLE && present_family == UINT32_MAX) {
+            VkBool32 supported = VK_FALSE;
+            vkGetPhysicalDeviceSurfaceSupportKHR(best_device, i, creator.surface, &supported);
+            if(supported)
+                present_family = i;
+        }
     }
+
+    if(creator.request_transfer && transfer_family == UINT32_MAX)
+        transfer_family = transfer_family_compute;
 
     free(families);
 
     if(graphics_family == UINT32_MAX) {
         MAESTRO_LOG_FATAL(impl->logger, base->name, "No graphics queue family found");
+        return HARP_RESULT_FAILED;
+    }
+
+    if(creator.surface != VK_NULL_HANDLE && present_family == UINT32_MAX) {
+        MAESTRO_LOG_FATAL(impl->logger, base->name, "No present queue family found for surface");
         return HARP_RESULT_FAILED;
     }
 
@@ -348,8 +393,8 @@ HarpResult create_vulkan_device(HarpCoreHandler *core_handler, HarpActorBase *ba
 
     // Build unique queue create infos
     static const float priority = 1.0f;
-    VkDeviceQueueCreateInfo queue_infos[3];
-    uint32_t unique_families[3];
+    VkDeviceQueueCreateInfo queue_infos[4];
+    uint32_t unique_families[4];
     uint32_t unique_count = 0;
 
     unique_families[unique_count] = graphics_family;
@@ -386,10 +431,29 @@ HarpResult create_vulkan_device(HarpCoreHandler *core_handler, HarpActorBase *ba
         }
     }
 
+    if(creator.surface != VK_NULL_HANDLE) {
+        uint8_t already = 0;
+        for(uint32_t i = 0; i < unique_count; ++i)
+            if(unique_families[i] == present_family) { already = 1; break; }
+
+        if(!already) {
+            unique_families[unique_count] = present_family;
+            queue_infos[unique_count++] = (VkDeviceQueueCreateInfo){
+                .sType            = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+                .queueFamilyIndex = present_family,
+                .queueCount       = 1,
+                .pQueuePriorities = &priority
+            };
+        }
+    }
+
+    static const char *const swapchain_ext = VK_KHR_SWAPCHAIN_EXTENSION_NAME;
     VkDeviceCreateInfo device_info = {
-        .sType                = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
-        .queueCreateInfoCount = unique_count,
-        .pQueueCreateInfos    = queue_infos,
+        .sType                   = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+        .queueCreateInfoCount    = unique_count,
+        .pQueueCreateInfos       = queue_infos,
+        .enabledExtensionCount   = creator.surface != VK_NULL_HANDLE ? 1 : 0,
+        .ppEnabledExtensionNames = creator.surface != VK_NULL_HANDLE ? &swapchain_ext : NULL,
     };
 
     if(vkCreateDevice(best_device, &device_info, NULL, &impl->pub.device) != VK_SUCCESS) {
@@ -408,6 +472,16 @@ HarpResult create_vulkan_device(HarpCoreHandler *core_handler, HarpActorBase *ba
     if(creator.request_transfer) {
         vkGetDeviceQueue(impl->pub.device, transfer_family, 0, &impl->transfer_queue);
         impl->transfer_family = transfer_family;
+    }
+
+    impl->pub.present_family = UINT32_MAX;
+    impl->present_family     = UINT32_MAX;
+    impl->present_queue      = VK_NULL_HANDLE;
+
+    if(creator.surface != VK_NULL_HANDLE) {
+        vkGetDeviceQueue(impl->pub.device, present_family, 0, &impl->present_queue);
+        impl->present_family     = present_family;
+        impl->pub.present_family = present_family;
     }
 
     MAESTRO_LOG_INFO(impl->logger, base->name, "Vulkan device created");
@@ -439,6 +513,8 @@ HarpResult destroy_vulkan_device(HarpCoreHandler *core_handler, HarpActorBase *b
     impl->graphics_queue = VK_NULL_HANDLE;
     impl->compute_queue  = VK_NULL_HANDLE;
     impl->transfer_queue = VK_NULL_HANDLE;
+    impl->present_queue  = VK_NULL_HANDLE;
+    impl->present_family = UINT32_MAX;
 
     return HARP_RESULT_OK;
 }

@@ -3,6 +3,8 @@
 
 #if HARP_PLATFORM_LINUX
 
+#include <vulkan/vulkan_xcb.h>
+
 #include <stdlib.h>
 #include <string.h>
 
@@ -80,6 +82,26 @@ void window_get_vulkan_extensions(MaestroWindowHandler *h, uint32_t *out_count, 
         for(uint32_t i = 0; i < WINDOW_VULKAN_EXTENSION_COUNT; ++i)
             out_extensions[i] = WINDOW_VULKAN_EXTENSIONS[i];
     }
+}
+
+HarpResult window_create_vulkan_surface(MaestroWindowHandler *h, VkInstance instance, VkSurfaceKHR *out_surface) {
+    MaestroWindowHandlerImpl *window = HARP_HANDLER_AS(MaestroWindowHandlerImpl, h);
+    *out_surface = VK_NULL_HANDLE;
+
+    VkXcbSurfaceCreateInfoKHR create_info = {
+        .sType      = VK_STRUCTURE_TYPE_XCB_SURFACE_CREATE_INFO_KHR,
+        .connection = window->connection,
+        .window     = window->window,
+    };
+
+    VkResult res = vkCreateXcbSurfaceKHR(instance, &create_info, NULL, out_surface);
+    if(res != VK_SUCCESS) {
+        *out_surface = VK_NULL_HANDLE;
+        MAESTRO_LOG_FATAL(window->logger, window->pub._base.name, "Failed to create Vulkan surface");
+        return HARP_RESULT_FAILED;
+    }
+
+    return HARP_RESULT_OK;
 }
 
 void window_pump_messages(MaestroWindowHandler *h) {

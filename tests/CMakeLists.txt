@@ -86,3 +86,26 @@ add_test(
     COMMAND test_maestro_vulkan
 )
 
+
+add_executable(
+    test_maestro_surface
+    test_surface.c
+)
+
+target_link_libraries(
+    test_maestro_surface PRIVATE
+    HARP::Harp
+    Maestro
+    Vulkan::Vulkan
+)
+
+target_include_directories(
+    test_maestro_surface PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
+)
+
+add_test(
+    NAME test_maestro_surface
+    COMMAND test_maestro_surface
+)
+

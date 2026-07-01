@@ -81,8 +81,9 @@ HarpResult maestro_register(HarpCoreHandler *core) {
 
     MaestroWindowHandler *window = HARP_HANDLER_AS(MaestroWindowHandler, handler_base);
 
+    window->pump_messages         = window_pump_messages;
     window->get_vulkan_extensions = window_get_vulkan_extensions;
-    window->pump_messages = window_pump_messages;
+    window->create_vulkan_surface = window_create_vulkan_surface;
 
     core->handler_set_serving(core, handler_base, 1);
 

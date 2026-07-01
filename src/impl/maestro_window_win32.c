@@ -3,6 +3,8 @@
 
 #if HARP_PLATFORM_WINDOWS
 
+#include <vulkan/vulkan_win32.h>
+
 #include <windowsx.h>
 #include <string.h>
 
@@ -57,6 +59,26 @@ void window_get_vulkan_extensions(MaestroWindowHandler *h, uint32_t *out_count, 
         for(uint32_t i = 0; i < WINDOW_VULKAN_EXTENSION_COUNT; ++i)
             out_extensions[i] = WINDOW_VULKAN_EXTENSIONS[i];
     }
+}
+
+HarpResult window_create_vulkan_surface(MaestroWindowHandler *h, VkInstance instance, VkSurfaceKHR *out_surface) {
+    MaestroWindowHandlerImpl *window = HARP_HANDLER_AS(MaestroWindowHandlerImpl, h);
+    *out_surface = VK_NULL_HANDLE;
+
+    VkWin32SurfaceCreateInfoKHR create_info = {
+        .sType     = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR,
+        .hinstance = window->h_instance,
+        .hwnd      = window->hwnd,
+    };
+
+    VkResult res = vkCreateWin32SurfaceKHR(instance, &create_info, NULL, out_surface);
+    if(res != VK_SUCCESS) {
+        *out_surface = VK_NULL_HANDLE;
+        MAESTRO_LOG_FATAL(window->logger, window->pub._base.name, "Failed to create Vulkan surface");
+        return HARP_RESULT_FAILED;
+    }
+
+    return HARP_RESULT_OK;
 }
 
 void window_pump_messages(MaestroWindowHandler *h) {

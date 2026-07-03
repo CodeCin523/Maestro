@@ -6,6 +6,7 @@
 #include <vulkan/vulkan_win32.h>
 
 #include <windowsx.h>
+#include <stdio.h>
 #include <string.h>
 
 
@@ -89,20 +90,39 @@ void window_pump_messages(MaestroWindowHandler *h) {
     for(uint32_t i = 0; i < MAESTRO_KEY_COUNT; ++i)
         h->keys[i] = (uint8_t)(((h->keys[i] & MAESTRO_INPUT_CURRENT) << 1) | handler->held[i]);
 
-    h->mouse_buttons = (uint8_t)(((h->mouse_buttons & 0x07u) << 3) | handler->held_mouse);
-    h->prev_mouse_x  = h->mouse_x;
-    h->prev_mouse_y  = h->mouse_y;
+    h->flags    &= ~MAESTRO_WINDOW_RESIZED;
+    h->scroll    = 0;
+    h->scroll_x  = 0;
+
+    h->mouse_buttons = (MaestroMouseBits)(((h->mouse_buttons & 0x1Fu) << 5) | handler->held_mouse);
+
+    // In captured mode prev is always the center so DELTA reports displacement from center.
+    if(h->flags & MAESTRO_WINDOW_MOUSE_CAPTURED) {
+        h->prev_mouse_x = (int32_t)(h->width  / 2);
+        h->prev_mouse_y = (int32_t)(h->height / 2);
+    } else {
+        h->prev_mouse_x = h->mouse_x;
+        h->prev_mouse_y = h->mouse_y;
+    }
 
     MSG msg;
     while(PeekMessageA(&msg, handler->hwnd, 0, 0, PM_REMOVE)) {
         TranslateMessage(&msg);
         DispatchMessageA(&msg);
     }
+
+    // Warp to center once per pump when captured so the next pump's prev == center.
+    if(h->flags & MAESTRO_WINDOW_MOUSE_CAPTURED) {
+        POINT center = { (LONG)(h->width / 2), (LONG)(h->height / 2) };
+        ClientToScreen(handler->hwnd, &center);
+        SetCursorPos(center.x, center.y);
+        handler->warp_skip = 1;
+    }
 }
 
 
 /* ================================================================================ */
-/*  WINDOW HANDLER                                                                  */
+/*  WINDOW PROCEDURE                                                                */
 /* ================================================================================ */
 
 LRESULT CALLBACK win32_process_message(HWND hwnd, UINT msg, WPARAM w_param, LPARAM l_param) {
@@ -119,24 +139,44 @@ LRESULT CALLBACK win32_process_message(HWND hwnd, UINT msg, WPARAM w_param, LPAR
             // Notify the OS that erasing will be handled by the application to prevent flicker.
             return 1;
         case WM_CLOSE:
-            if(handler) handler->pub.should_close = 1;
+            if(handler) handler->pub.flags |= MAESTRO_WINDOW_CLOSE_REQUESTED;
             return 0;
         case WM_SIZE: {
             if(handler) {
                 if(w_param == SIZE_MINIMIZED) {
-                    handler->pub.is_minimized = 1;
+                    handler->pub.flags |= MAESTRO_WINDOW_MINIMIZED;
                 } else {
-                    handler->pub.is_minimized = 0;
-                    handler->pub.width  = LOWORD(l_param);
-                    handler->pub.height = HIWORD(l_param);
+                    uint32_t new_w = LOWORD(l_param);
+                    uint32_t new_h = HIWORD(l_param);
+                    handler->pub.flags &= ~MAESTRO_WINDOW_MINIMIZED;
+                    if(new_w != handler->pub.width || new_h != handler->pub.height) {
+                        handler->pub.width  = new_w;
+                        handler->pub.height = new_h;
+                        handler->pub.flags |= MAESTRO_WINDOW_RESIZED;
+                    }
                 }
             }
         } break;
         case WM_SETFOCUS:
-            if(handler) handler->pub.is_focused = 1;
+            if(handler) handler->pub.flags |= MAESTRO_WINDOW_FOCUSED;
             break;
         case WM_KILLFOCUS:
-            if(handler) handler->pub.is_focused = 0;
+            if(handler) {
+                handler->pub.flags &= ~MAESTRO_WINDOW_FOCUSED;
+                // Release capture/clip on focus loss to avoid trapping the cursor.
+                if(handler->pub.flags & MAESTRO_WINDOW_MOUSE_CAPTURED) {
+                    ClipCursor(NULL);
+                    ReleaseCapture();
+                }
+            }
+            break;
+        case WM_SETCURSOR:
+            // Suppress the default cursor when cursor is hidden.
+            if(handler && (handler->pub.flags & MAESTRO_WINDOW_CURSOR_HIDDEN) &&
+               LOWORD(l_param) == HTCLIENT) {
+                SetCursor(NULL);
+                return TRUE;
+            }
             break;
         case WM_KEYDOWN:
         case WM_SYSKEYDOWN:
@@ -154,11 +194,28 @@ LRESULT CALLBACK win32_process_message(HWND hwnd, UINT msg, WPARAM w_param, LPAR
         } break;
         case WM_MOUSEMOVE: {
             if(!handler) break;
+            if(handler->warp_skip) {
+                handler->warp_skip = 0;
+                break;
+            }
             handler->pub.mouse_x = GET_X_LPARAM(l_param);
             handler->pub.mouse_y = GET_Y_LPARAM(l_param);
         } break;
-        case WM_MOUSEWHEEL: {
-            // TODO: scroll input
+        case WM_MOUSEWHEEL:
+            if(handler)
+                handler->pub.scroll += GET_WHEEL_DELTA_WPARAM(w_param) / WHEEL_DELTA;
+            break;
+        case WM_MOUSEHWHEEL:
+            if(handler)
+                handler->pub.scroll_x += GET_WHEEL_DELTA_WPARAM(w_param) / WHEEL_DELTA;
+            break;
+        case WM_XBUTTONDOWN:
+        case WM_XBUTTONUP: {
+            if(!handler) break;
+            uint8_t pressed = (msg == WM_XBUTTONDOWN);
+            uint8_t mask    = (HIWORD(w_param) == XBUTTON1) ? MAESTRO_MOUSE_BACK : MAESTRO_MOUSE_FORWARD;
+            if(pressed) { handler->held_mouse |= mask;  handler->pub.mouse_buttons |=  mask; }
+            else        { handler->held_mouse &= ~mask; handler->pub.mouse_buttons &= ~mask; }
         } break;
         case WM_LBUTTONDOWN:
         case WM_MBUTTONDOWN:
@@ -180,6 +237,138 @@ LRESULT CALLBACK win32_process_message(HWND hwnd, UINT msg, WPARAM w_param, LPAR
     return DefWindowProcA(hwnd, msg, w_param, l_param);
 }
 
+
+/* ================================================================================ */
+/*  SET FUNCTIONS                                                                   */
+/* ================================================================================ */
+
+void window_set_mouse_capture(MaestroWindowHandler *h, uint8_t captured) {
+    MaestroWindowHandlerImpl *impl = (MaestroWindowHandlerImpl *)h;
+
+    if(captured) {
+        SetCapture(impl->hwnd);
+
+        RECT rect;
+        GetClientRect(impl->hwnd, &rect);
+        MapWindowPoints(impl->hwnd, NULL, (POINT *)&rect, 2);
+        ClipCursor(&rect);
+
+        // Warp to center immediately.
+        POINT center = { (LONG)(h->width / 2), (LONG)(h->height / 2) };
+        ClientToScreen(impl->hwnd, &center);
+        SetCursorPos(center.x, center.y);
+        impl->warp_skip = 1;
+
+        h->flags |= MAESTRO_WINDOW_MOUSE_CAPTURED;
+    } else {
+        ClipCursor(NULL);
+        ReleaseCapture();
+        impl->warp_skip = 0;
+        h->flags &= ~MAESTRO_WINDOW_MOUSE_CAPTURED;
+    }
+}
+
+void window_set_cursor_visible(MaestroWindowHandler *h, uint8_t visible) {
+    if(visible) {
+        h->flags &= ~MAESTRO_WINDOW_CURSOR_HIDDEN;
+        SetCursor(LoadCursorA(NULL, IDC_ARROW));
+    } else {
+        h->flags |= MAESTRO_WINDOW_CURSOR_HIDDEN;
+        SetCursor(NULL);
+    }
+    // WM_SETCURSOR handles subsequent cursor hover events based on the flag.
+}
+
+static void window_apply_title(MaestroWindowHandlerImpl *impl) {
+    char buf[512];
+    if(impl->title_ext[0])
+        snprintf(buf, sizeof(buf), "%s - %s", impl->title_base, impl->title_ext);
+    else
+        snprintf(buf, sizeof(buf), "%s", impl->title_base);
+    SetWindowTextA(impl->hwnd, buf);
+}
+
+void window_set_title(MaestroWindowHandler *h, const char *title) {
+    MaestroWindowHandlerImpl *impl = (MaestroWindowHandlerImpl *)h;
+    snprintf(impl->title_base, sizeof(impl->title_base), "%s", title);
+    window_apply_title(impl);
+}
+
+void window_set_title_extension(MaestroWindowHandler *h, const char *extension) {
+    MaestroWindowHandlerImpl *impl = (MaestroWindowHandlerImpl *)h;
+    if(extension)
+        snprintf(impl->title_ext, sizeof(impl->title_ext), "%s", extension);
+    else
+        impl->title_ext[0] = '\0';
+    window_apply_title(impl);
+}
+
+void window_set_size(MaestroWindowHandler *h, uint32_t width, uint32_t height) {
+    MaestroWindowHandlerImpl *impl = (MaestroWindowHandlerImpl *)h;
+    DWORD style    = (DWORD)GetWindowLongA(impl->hwnd, GWL_STYLE);
+    DWORD ex_style = (DWORD)GetWindowLongA(impl->hwnd, GWL_EXSTYLE);
+    RECT  rect     = { 0, 0, (LONG)width, (LONG)height };
+    AdjustWindowRectEx(&rect, style, FALSE, ex_style);
+    SetWindowPos(impl->hwnd, NULL, 0, 0,
+        rect.right - rect.left, rect.bottom - rect.top,
+        SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+    h->width  = width;
+    h->height = height;
+}
+
+void window_set_position(MaestroWindowHandler *h, int32_t x, int32_t y) {
+    MaestroWindowHandlerImpl *impl = (MaestroWindowHandlerImpl *)h;
+    SetWindowPos(impl->hwnd, NULL, x, y, 0, 0,
+        SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+}
+
+void window_set_fullscreen(MaestroWindowHandler *h, uint8_t fullscreen) {
+    MaestroWindowHandlerImpl *impl = (MaestroWindowHandlerImpl *)h;
+
+    if(fullscreen) {
+        impl->saved_placement.length = sizeof(WINDOWPLACEMENT);
+        GetWindowPlacement(impl->hwnd, &impl->saved_placement);
+
+        MONITORINFO mi = { sizeof(mi) };
+        GetMonitorInfo(MonitorFromWindow(impl->hwnd, MONITOR_DEFAULTTONEAREST), &mi);
+
+        SetWindowLongA(impl->hwnd, GWL_STYLE, WS_POPUP | WS_VISIBLE);
+        SetWindowPos(impl->hwnd, HWND_TOP,
+            mi.rcMonitor.left, mi.rcMonitor.top,
+            mi.rcMonitor.right  - mi.rcMonitor.left,
+            mi.rcMonitor.bottom - mi.rcMonitor.top,
+            SWP_FRAMECHANGED);
+
+        h->flags |= MAESTRO_WINDOW_FULLSCREEN;
+    } else {
+        DWORD style = WS_OVERLAPPED | WS_SYSMENU | WS_CAPTION |
+                      WS_MAXIMIZEBOX | WS_MINIMIZEBOX | WS_THICKFRAME;
+        SetWindowLongA(impl->hwnd, GWL_STYLE, style);
+        SetWindowPlacement(impl->hwnd, &impl->saved_placement);
+        SetWindowPos(impl->hwnd, NULL, 0, 0, 0, 0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+
+        h->flags &= ~MAESTRO_WINDOW_FULLSCREEN;
+    }
+}
+
+void window_request_attention(MaestroWindowHandler *h) {
+    MaestroWindowHandlerImpl *impl = (MaestroWindowHandlerImpl *)h;
+    FLASHWINFO fi = {
+        .cbSize    = sizeof(FLASHWINFO),
+        .hwnd      = impl->hwnd,
+        .dwFlags   = FLASHW_TRAY | FLASHW_TIMERNOFG,
+        .uCount    = 3,
+        .dwTimeout = 0
+    };
+    FlashWindowEx(&fi);
+}
+
+
+/* ================================================================================ */
+/*  INIT / TERM                                                                     */
+/* ================================================================================ */
+
 HarpResult init_window(HarpCoreHandler *core_handler, HarpHandlerBase *base, HarpCreatorBase *creator) {
     MaestroWindowCreator window_creator = {
         .title = "MaestroWindow",
@@ -198,17 +387,19 @@ HarpResult init_window(HarpCoreHandler *core_handler, HarpHandlerBase *base, Har
         (HarpHandlerBase **)&handler->logger) != HARP_RESULT_OK)
             return HARP_RESULT_FAILED;
 
+    SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+
     handler->h_instance = GetModuleHandleA(0);
 
     HICON icon = LoadIcon(handler->h_instance, IDI_APPLICATION);
     WNDCLASSA wc = {0};
-    wc.style = CS_DBLCLKS; // Get double-clicks
+    wc.style = CS_DBLCLKS;
     wc.lpfnWndProc = win32_process_message;
     wc.cbClsExtra = 0;
     wc.cbWndExtra = 0;
     wc.hInstance = handler->h_instance;
     wc.hIcon = icon;
-    wc.hCursor = LoadCursor(NULL, IDC_ARROW); // NULL; // Manage the cursor manually
+    wc.hCursor = LoadCursor(NULL, IDC_ARROW);
     wc.hbrBackground = NULL;
     wc.lpszClassName = "MaestroWindowClass";
 
@@ -234,23 +425,19 @@ HarpResult init_window(HarpCoreHandler *core_handler, HarpHandlerBase *base, Har
     window_style |= WS_MINIMIZEBOX;
     window_style |= WS_THICKFRAME;
 
-    // Obtain the size of the border.
     RECT border_rect = {0, 0, 0, 0};
     AdjustWindowRectEx(&border_rect, window_style, 0, window_ex_style);
 
-    // The border rectangle is negative.
     window_x += border_rect.left;
     window_y += border_rect.top;
-
-    // Grow by the size of the OS border.
-    window_width += border_rect.right - border_rect.left;
+    window_width  += border_rect.right  - border_rect.left;
     window_height += border_rect.bottom - border_rect.top;
 
     HWND handle = CreateWindowExA(
         window_ex_style, "MaestroWindowClass", window_creator.title,
         window_style, window_x, window_y, window_width, window_height,
         0, 0, handler->h_instance, handler);
-    
+
     if(handle == 0) {
         MAESTRO_LOG_FATAL(handler->logger, base->name, "Window creation failed");
         return HARP_RESULT_FAILED;
@@ -258,28 +445,32 @@ HarpResult init_window(HarpCoreHandler *core_handler, HarpHandlerBase *base, Har
 
     handler->hwnd = handle;
 
-    handler->pub.width         = (uint32_t)client_width;
-    handler->pub.height        = (uint32_t)client_height;
-    handler->pub.should_close  = 0;
-    handler->pub.is_minimized  = 0;
-    handler->pub.is_focused    = 1;
-    handler->pub.mouse_x       = 0;
-    handler->pub.mouse_y       = 0;
-    handler->pub.prev_mouse_x  = 0;
-    handler->pub.prev_mouse_y  = 0;
-    handler->pub.mouse_buttons = 0;
+    snprintf(handler->title_base, sizeof(handler->title_base), "%s", window_creator.title);
+    handler->title_ext[0]               = '\0';
+    handler->warp_skip                  = 0;
+    memset(&handler->saved_placement, 0, sizeof(handler->saved_placement));
+
+    handler->pub.width                  = (uint32_t)client_width;
+    handler->pub.height                 = (uint32_t)client_height;
+    handler->pub.flags                  = MAESTRO_WINDOW_FOCUSED;
+    handler->pub.mouse_x                = 0;
+    handler->pub.mouse_y                = 0;
+    handler->pub.prev_mouse_x           = 0;
+    handler->pub.prev_mouse_y           = 0;
+    handler->pub.mouse_buttons          = 0;
+    handler->pub.scroll                 = 0;
+    handler->pub.scroll_x               = 0;
     memset(handler->pub.keys, 0, sizeof(handler->pub.keys));
     memset(handler->held, 0, sizeof(handler->held));
     handler->held_mouse = 0;
 
-    uint32_t should_activate = 1; // If the window should not accept input, this should be false.
+    uint32_t should_activate = 1;
     int32_t show_window_command_flags = should_activate ? SW_SHOW : SW_SHOWNOACTIVE;
-    // If initially minimized, use SW_MINIMIZE : SW_SHOWMINNOACTIVE
-    // If initially maximized, use SW_SHOWMAXIMIZED : SW_MAXIMIZE
     ShowWindow(handler->hwnd, show_window_command_flags);
 
     return HARP_RESULT_OK;
 }
+
 HarpResult term_window(HarpCoreHandler *core_handler, HarpHandlerBase *base) {
     HARP_UNUSED(core_handler);
     MaestroWindowHandlerImpl *handler = (MaestroWindowHandlerImpl *)base;

@@ -5,6 +5,7 @@
 
 #include <vulkan/vulkan_xcb.h>
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -64,6 +65,37 @@ static xcb_atom_t get_atom(xcb_connection_t *conn, const char *name) {
     return atom;
 }
 
+static void window_apply_title(MaestroWindowHandlerImpl *impl) {
+    char buf[512];
+    if(impl->title_ext[0])
+        snprintf(buf, sizeof(buf), "%s - %s", impl->title_base, impl->title_ext);
+    else
+        snprintf(buf, sizeof(buf), "%s", impl->title_base);
+
+    uint32_t len = (uint32_t)strlen(buf);
+
+    if(impl->net_wm_name != XCB_ATOM_NONE && impl->utf8_string != XCB_ATOM_NONE) {
+        xcb_change_property(impl->connection, XCB_PROP_MODE_REPLACE, impl->window,
+            impl->net_wm_name, impl->utf8_string, 8, len, buf);
+    }
+    xcb_change_property(impl->connection, XCB_PROP_MODE_REPLACE, impl->window,
+        XCB_ATOM_WM_NAME, XCB_ATOM_STRING, 8, len, buf);
+    xcb_flush(impl->connection);
+}
+
+// Creates a 1x1 depth-1 transparent pixmap cursor (invisible).
+static xcb_cursor_t create_blank_cursor(MaestroWindowHandlerImpl *impl) {
+    xcb_pixmap_t bm = xcb_generate_id(impl->connection);
+    xcb_create_pixmap(impl->connection, 1, bm, impl->window, 1, 1);
+
+    xcb_cursor_t cursor = xcb_generate_id(impl->connection);
+    xcb_create_cursor(impl->connection, cursor, bm, bm,
+        0, 0, 0, 0, 0, 0, 0, 0);
+
+    xcb_free_pixmap(impl->connection, bm);
+    return cursor;
+}
+
 
 /* ================================================================================ */
 /*  WINDOW FUNCTIONS                                                                */
@@ -109,12 +141,23 @@ void window_pump_messages(MaestroWindowHandler *h) {
 
     if(!handler->connection) return;
 
+    h->flags    &= ~MAESTRO_WINDOW_RESIZED;
+    h->scroll    = 0;
+    h->scroll_x  = 0;
+
     for(uint32_t i = 0; i < MAESTRO_KEY_COUNT; ++i)
         h->keys[i] = (uint8_t)(((h->keys[i] & MAESTRO_INPUT_CURRENT) << 1) | handler->held[i]);
 
-    h->mouse_buttons = (uint8_t)(((h->mouse_buttons & 0x07u) << 3) | handler->held_mouse);
-    h->prev_mouse_x  = h->mouse_x;
-    h->prev_mouse_y  = h->mouse_y;
+    h->mouse_buttons = (MaestroMouseBits)(((h->mouse_buttons & 0x1Fu) << 5) | handler->held_mouse);
+
+    // In captured mode prev is always the center so DELTA reports displacement from center.
+    if(h->flags & MAESTRO_WINDOW_MOUSE_CAPTURED) {
+        h->prev_mouse_x = (int32_t)(h->width  / 2);
+        h->prev_mouse_y = (int32_t)(h->height / 2);
+    } else {
+        h->prev_mouse_x = h->mouse_x;
+        h->prev_mouse_y = h->mouse_y;
+    }
 
     xcb_generic_event_t *event;
     while((event = xcb_poll_for_event(handler->connection)) != NULL) {
@@ -122,30 +165,56 @@ void window_pump_messages(MaestroWindowHandler *h) {
             case XCB_CLIENT_MESSAGE: {
                 xcb_client_message_event_t *cm = (xcb_client_message_event_t *)event;
                 if(cm->data.data32[0] == handler->wm_delete_win)
-                    h->should_close = 1;
+                    h->flags |= MAESTRO_WINDOW_CLOSE_REQUESTED;
             } break;
 
             case XCB_CONFIGURE_NOTIFY: {
                 xcb_configure_notify_event_t *cfg = (xcb_configure_notify_event_t *)event;
-                h->width  = cfg->width;
-                h->height = cfg->height;
+                if(cfg->width != h->width || cfg->height != h->height) {
+                    h->width  = cfg->width;
+                    h->height = cfg->height;
+                    h->flags |= MAESTRO_WINDOW_RESIZED;
+                }
             } break;
 
             case XCB_FOCUS_IN:
-                h->is_focused = 1;
+                h->flags |= MAESTRO_WINDOW_FOCUSED;
                 break;
 
             case XCB_FOCUS_OUT:
-                h->is_focused = 0;
+                h->flags &= ~MAESTRO_WINDOW_FOCUSED;
                 break;
 
             case XCB_MAP_NOTIFY:
-                h->is_minimized = 0;
+                h->flags &= ~MAESTRO_WINDOW_MINIMIZED;
                 break;
 
             case XCB_UNMAP_NOTIFY:
-                h->is_minimized = 1;
+                h->flags |= MAESTRO_WINDOW_MINIMIZED;
                 break;
+
+            case XCB_PROPERTY_NOTIFY: {
+                xcb_property_notify_event_t *pn = (xcb_property_notify_event_t *)event;
+                if(pn->atom != handler->net_wm_state) break;
+
+                xcb_get_property_reply_t *reply = xcb_get_property_reply(
+                    handler->connection,
+                    xcb_get_property(handler->connection, 0, handler->window,
+                        handler->net_wm_state, XCB_ATOM_ATOM, 0, 32),
+                    NULL);
+                if(!reply) break;
+
+                xcb_atom_t *atoms = xcb_get_property_value(reply);
+                uint32_t    count = (uint32_t)(xcb_get_property_value_length(reply) / sizeof(xcb_atom_t));
+                uint8_t     fs    = 0;
+                for(uint32_t i = 0; i < count; ++i) {
+                    if(atoms[i] == handler->net_wm_state_fullscreen) { fs = 1; break; }
+                }
+                free(reply);
+
+                if(fs) h->flags |=  MAESTRO_WINDOW_FULLSCREEN;
+                else   h->flags &= ~MAESTRO_WINDOW_FULLSCREEN;
+            } break;
 
             case XCB_KEY_PRESS:
             case XCB_KEY_RELEASE: {
@@ -161,19 +230,37 @@ void window_pump_messages(MaestroWindowHandler *h) {
 
             case XCB_MOTION_NOTIFY: {
                 xcb_motion_notify_event_t *motion = (xcb_motion_notify_event_t *)event;
-                h->mouse_x = motion->event_x;
-                h->mouse_y = motion->event_y;
+                if(handler->warp_skip) {
+                    handler->warp_skip = 0;
+                } else {
+                    h->mouse_x = motion->event_x;
+                    h->mouse_y = motion->event_y;
+                }
             } break;
 
             case XCB_BUTTON_PRESS:
             case XCB_BUTTON_RELEASE: {
                 xcb_button_press_event_t *bp = (xcb_button_press_event_t *)event;
                 uint8_t pressed = (event->response_type & ~0x80) == XCB_BUTTON_PRESS;
+
+                // Scroll wheel: only fires on press (no matching release event).
+                if(pressed) {
+                    switch(bp->detail) {
+                        case 4: h->scroll   += 1;  break;  // up
+                        case 5: h->scroll   -= 1;  break;  // down
+                        case 6: h->scroll_x -= 1;  break;  // left
+                        case 7: h->scroll_x += 1;  break;  // right
+                        default: break;
+                    }
+                }
+
                 uint8_t mask = 0;
                 switch(bp->detail) {
-                    case 1: mask = MAESTRO_MOUSE_LEFT;   break;
-                    case 2: mask = MAESTRO_MOUSE_MIDDLE; break;
-                    case 3: mask = MAESTRO_MOUSE_RIGHT;  break;
+                    case 1: mask = MAESTRO_MOUSE_LEFT;    break;
+                    case 2: mask = MAESTRO_MOUSE_MIDDLE;  break;
+                    case 3: mask = MAESTRO_MOUSE_RIGHT;   break;
+                    case 8: mask = MAESTRO_MOUSE_BACK;    break;
+                    case 9: mask = MAESTRO_MOUSE_FORWARD; break;
                     default: break;
                 }
                 if(mask) {
@@ -188,6 +275,159 @@ void window_pump_messages(MaestroWindowHandler *h) {
 
         free(event);
     }
+
+    // Warp to center once per pump when captured so the next pump's prev == center.
+    if(h->flags & MAESTRO_WINDOW_MOUSE_CAPTURED) {
+        xcb_warp_pointer(handler->connection, XCB_NONE, handler->window,
+            0, 0, 0, 0,
+            (int16_t)(h->width  / 2),
+            (int16_t)(h->height / 2));
+        handler->warp_skip = 1;
+        xcb_flush(handler->connection);
+    }
+}
+
+void window_set_mouse_capture(MaestroWindowHandler *h, uint8_t captured) {
+    MaestroWindowHandlerImpl *impl = (MaestroWindowHandlerImpl *)h;
+
+    if(captured) {
+        if(impl->blank_cursor == XCB_CURSOR_NONE)
+            impl->blank_cursor = create_blank_cursor(impl);
+
+        // Grab and confine the pointer to the window. We pass blank_cursor here
+        // so the grabbed cursor is invisible; set_cursor_visible manages this
+        // independently, but the grab needs some cursor argument.
+        xcb_grab_pointer(impl->connection, 1, impl->window,
+            XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_BUTTON_RELEASE |
+            XCB_EVENT_MASK_POINTER_MOTION,
+            XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC,
+            impl->window,
+            (h->flags & MAESTRO_WINDOW_CURSOR_HIDDEN) ? impl->blank_cursor : XCB_CURSOR_NONE,
+            XCB_CURRENT_TIME);
+
+        // Warp to center immediately so the first pump's prev is already centered.
+        xcb_warp_pointer(impl->connection, XCB_NONE, impl->window,
+            0, 0, 0, 0,
+            (int16_t)(h->width  / 2),
+            (int16_t)(h->height / 2));
+        impl->warp_skip = 1;
+
+        h->flags |= MAESTRO_WINDOW_MOUSE_CAPTURED;
+        xcb_flush(impl->connection);
+    } else {
+        xcb_ungrab_pointer(impl->connection, XCB_CURRENT_TIME);
+
+        // Restore cursor appearance to match the current visibility flag.
+        uint32_t cursor = (h->flags & MAESTRO_WINDOW_CURSOR_HIDDEN)
+            ? impl->blank_cursor
+            : XCB_CURSOR_NONE;
+        xcb_change_window_attributes(impl->connection, impl->window, XCB_CW_CURSOR, &cursor);
+
+        impl->warp_skip = 0;
+        h->flags &= ~MAESTRO_WINDOW_MOUSE_CAPTURED;
+        xcb_flush(impl->connection);
+    }
+}
+
+void window_set_cursor_visible(MaestroWindowHandler *h, uint8_t visible) {
+    MaestroWindowHandlerImpl *impl = (MaestroWindowHandlerImpl *)h;
+
+    if(visible) {
+        h->flags &= ~MAESTRO_WINDOW_CURSOR_HIDDEN;
+        // Only change the window cursor attribute when not captured; the grab
+        // owns the cursor appearance while captured.
+        if(!(h->flags & MAESTRO_WINDOW_MOUSE_CAPTURED)) {
+            uint32_t cursor = XCB_CURSOR_NONE;
+            xcb_change_window_attributes(impl->connection, impl->window, XCB_CW_CURSOR, &cursor);
+        }
+    } else {
+        if(impl->blank_cursor == XCB_CURSOR_NONE)
+            impl->blank_cursor = create_blank_cursor(impl);
+
+        h->flags |= MAESTRO_WINDOW_CURSOR_HIDDEN;
+        uint32_t cursor = impl->blank_cursor;
+        xcb_change_window_attributes(impl->connection, impl->window, XCB_CW_CURSOR, &cursor);
+    }
+    xcb_flush(impl->connection);
+}
+
+void window_set_title(MaestroWindowHandler *h, const char *title) {
+    MaestroWindowHandlerImpl *impl = (MaestroWindowHandlerImpl *)h;
+    snprintf(impl->title_base, sizeof(impl->title_base), "%s", title);
+    window_apply_title(impl);
+}
+
+void window_set_title_extension(MaestroWindowHandler *h, const char *extension) {
+    MaestroWindowHandlerImpl *impl = (MaestroWindowHandlerImpl *)h;
+    if(extension)
+        snprintf(impl->title_ext, sizeof(impl->title_ext), "%s", extension);
+    else
+        impl->title_ext[0] = '\0';
+    window_apply_title(impl);
+}
+
+void window_set_size(MaestroWindowHandler *h, uint32_t width, uint32_t height) {
+    MaestroWindowHandlerImpl *impl = (MaestroWindowHandlerImpl *)h;
+    uint32_t values[] = { width, height };
+    xcb_configure_window(impl->connection, impl->window,
+        XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT, values);
+    xcb_flush(impl->connection);
+    h->width  = width;
+    h->height = height;
+}
+
+void window_set_position(MaestroWindowHandler *h, int32_t x, int32_t y) {
+    MaestroWindowHandlerImpl *impl = (MaestroWindowHandlerImpl *)h;
+    uint32_t values[] = { (uint32_t)x, (uint32_t)y };
+    xcb_configure_window(impl->connection, impl->window,
+        XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y, values);
+    xcb_flush(impl->connection);
+}
+
+void window_set_fullscreen(MaestroWindowHandler *h, uint8_t fullscreen) {
+    MaestroWindowHandlerImpl *impl = (MaestroWindowHandlerImpl *)h;
+
+    if(impl->net_wm_state == XCB_ATOM_NONE ||
+       impl->net_wm_state_fullscreen == XCB_ATOM_NONE)
+        return;
+
+    xcb_client_message_event_t ev = { 0 };
+    ev.response_type    = XCB_CLIENT_MESSAGE;
+    ev.type             = impl->net_wm_state;
+    ev.window           = impl->window;
+    ev.format           = 32;
+    ev.data.data32[0]   = fullscreen ? 1 : 0;  // _NET_WM_STATE_ADD / _NET_WM_STATE_REMOVE
+    ev.data.data32[1]   = impl->net_wm_state_fullscreen;
+    ev.data.data32[2]   = 0;
+    ev.data.data32[3]   = 1;  // source: application
+
+    xcb_send_event(impl->connection, 0, impl->screen->root,
+        XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY | XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT,
+        (const char *)&ev);
+    xcb_flush(impl->connection);
+    // Flag is updated when the WM confirms via XCB_PROPERTY_NOTIFY in pump_messages.
+}
+
+void window_request_attention(MaestroWindowHandler *h) {
+    MaestroWindowHandlerImpl *impl = (MaestroWindowHandlerImpl *)h;
+
+    if(impl->net_wm_state == XCB_ATOM_NONE ||
+       impl->net_wm_state_demands_attention == XCB_ATOM_NONE)
+        return;
+
+    xcb_client_message_event_t ev = { 0 };
+    ev.response_type    = XCB_CLIENT_MESSAGE;
+    ev.type             = impl->net_wm_state;
+    ev.window           = impl->window;
+    ev.format           = 32;
+    ev.data.data32[0]   = 1;  // _NET_WM_STATE_ADD
+    ev.data.data32[1]   = impl->net_wm_state_demands_attention;
+    ev.data.data32[3]   = 1;  // source: application
+
+    xcb_send_event(impl->connection, 0, impl->screen->root,
+        XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY | XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT,
+        (const char *)&ev);
+    xcb_flush(impl->connection);
 }
 
 
@@ -244,8 +484,6 @@ HarpResult init_window(HarpCoreHandler *core_handler, HarpHandlerBase *base, Har
 
     handler->window = xcb_generate_id(handler->connection);
 
-    // Events we care about now, plus the ones the pump already has
-    // switch cases for so we don't need to touch this again later.
     uint32_t event_mask =
         XCB_EVENT_MASK_KEY_PRESS |
         XCB_EVENT_MASK_KEY_RELEASE |
@@ -253,7 +491,8 @@ HarpResult init_window(HarpCoreHandler *core_handler, HarpHandlerBase *base, Har
         XCB_EVENT_MASK_BUTTON_RELEASE |
         XCB_EVENT_MASK_POINTER_MOTION |
         XCB_EVENT_MASK_STRUCTURE_NOTIFY |
-        XCB_EVENT_MASK_FOCUS_CHANGE;
+        XCB_EVENT_MASK_FOCUS_CHANGE |
+        XCB_EVENT_MASK_PROPERTY_CHANGE;
 
     uint32_t value_list[] = { handler->screen->black_pixel, event_mask };
     uint32_t value_mask = XCB_CW_BACK_PIXEL | XCB_CW_EVENT_MASK;
@@ -270,24 +509,21 @@ HarpResult init_window(HarpCoreHandler *core_handler, HarpHandlerBase *base, Har
         handler->screen->root_visual,
         value_mask, value_list);
 
-    // Window title.
-    xcb_change_property(
-        handler->connection, XCB_PROP_MODE_REPLACE, handler->window,
-        XCB_ATOM_WM_NAME, XCB_ATOM_STRING, 8,
-        (uint32_t)strlen(window_creator.title), window_creator.title);
+    // Fetch atoms used throughout the lifetime of the window.
+    handler->wm_protocols                  = get_atom(handler->connection, "WM_PROTOCOLS");
+    handler->wm_delete_win                 = get_atom(handler->connection, "WM_DELETE_WINDOW");
+    handler->net_wm_name                   = get_atom(handler->connection, "_NET_WM_NAME");
+    handler->utf8_string                   = get_atom(handler->connection, "UTF8_STRING");
+    handler->net_wm_state                  = get_atom(handler->connection, "_NET_WM_STATE");
+    handler->net_wm_state_fullscreen       = get_atom(handler->connection, "_NET_WM_STATE_FULLSCREEN");
+    handler->net_wm_state_demands_attention= get_atom(handler->connection, "_NET_WM_STATE_DEMANDS_ATTENTION");
 
-    // Hint the window manager to give us a normal decorated, resizable
-    // frame (title bar + close/min/max), matching the Win32 behavior of
-    // WS_OVERLAPPED | WS_SYSMENU | WS_CAPTION | WS_MAXIMIZEBOX | WS_MINIMIZEBOX | WS_THICKFRAME.
-    // Most window managers default to exactly this for a plain
-    // INPUT_OUTPUT window with no overrides, so no MOTIF_WM_HINTS or
-    // override-redirect tweaking is needed here.
+    snprintf(handler->title_base, sizeof(handler->title_base), "%s", window_creator.title);
+    handler->title_ext[0] = '\0';
+    window_apply_title(handler);
 
-    // Opt into WM_DELETE_WINDOW so the WM sends us a close request via
-    // a client message instead of just killing the connection outright.
-    handler->wm_protocols = get_atom(handler->connection, "WM_PROTOCOLS");
-    handler->wm_delete_win = get_atom(handler->connection, "WM_DELETE_WINDOW");
-
+    // Opt into WM_DELETE_WINDOW so the WM sends a close request instead of
+    // killing the connection outright.
     if(handler->wm_protocols != XCB_ATOM_NONE && handler->wm_delete_win != XCB_ATOM_NONE) {
         xcb_change_property(
             handler->connection, XCB_PROP_MODE_REPLACE, handler->window,
@@ -298,19 +534,21 @@ HarpResult init_window(HarpCoreHandler *core_handler, HarpHandlerBase *base, Har
     xcb_map_window(handler->connection, handler->window);
     xcb_flush(handler->connection);
 
-    handler->pub.width         = window_creator.width;
-    handler->pub.height        = window_creator.height;
-    handler->pub.should_close  = 0;
-    handler->pub.is_minimized  = 0;
-    handler->pub.is_focused    = 1;
-    handler->pub.mouse_x       = 0;
-    handler->pub.mouse_y       = 0;
-    handler->pub.prev_mouse_x  = 0;
-    handler->pub.prev_mouse_y  = 0;
-    handler->pub.mouse_buttons = 0;
+    handler->blank_cursor           = XCB_CURSOR_NONE;
+    handler->warp_skip              = 0;
+    handler->pub.width              = window_creator.width;
+    handler->pub.height             = window_creator.height;
+    handler->pub.flags              = MAESTRO_WINDOW_FOCUSED;
+    handler->pub.mouse_x            = 0;
+    handler->pub.mouse_y            = 0;
+    handler->pub.prev_mouse_x       = 0;
+    handler->pub.prev_mouse_y       = 0;
+    handler->pub.mouse_buttons      = 0;
+    handler->pub.scroll             = 0;
+    handler->pub.scroll_x           = 0;
     memset(handler->pub.keys, 0, sizeof(handler->pub.keys));
     memset(handler->held, 0, sizeof(handler->held));
-    handler->held_mouse = 0;
+    handler->held_mouse             = 0;
 
     return HARP_RESULT_OK;
 }
@@ -321,6 +559,10 @@ HarpResult term_window(HarpCoreHandler *core_handler, HarpHandlerBase *base) {
     MaestroWindowHandlerImpl *handler = (MaestroWindowHandlerImpl *)base;
 
     if(handler->connection && handler->window) {
+        if(handler->blank_cursor != XCB_CURSOR_NONE) {
+            xcb_free_cursor(handler->connection, handler->blank_cursor);
+            handler->blank_cursor = XCB_CURSOR_NONE;
+        }
         xcb_destroy_window(handler->connection, handler->window);
         xcb_flush(handler->connection);
         handler->window = 0;
@@ -330,7 +572,7 @@ HarpResult term_window(HarpCoreHandler *core_handler, HarpHandlerBase *base) {
         // XCloseDisplay also tears down the bridged XCB connection,
         // so there is nothing separate to free for `connection`.
         XCloseDisplay(handler->display);
-        handler->display = NULL;
+        handler->display    = NULL;
         handler->connection = NULL;
     }
 

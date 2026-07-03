@@ -10,7 +10,7 @@ extern "C" {
 
 
 #define MAESTRO_PACKAGE_NAME "Maestro"
-#define MAESTRO_PACKAGE_VERSION HARP_MAKE_VERSION(1,3,0)
+#define MAESTRO_PACKAGE_VERSION HARP_MAKE_VERSION(1,4,0)
 
 
 #ifdef __cplusplus

@@ -5,35 +5,26 @@
 #include <maestro/maestro_logger.h>
 
 
-typedef struct MaestroVulkanInstanceHandlerImpl {
-    MaestroVulkanInstanceHandler pub;
+typedef struct MaestroVulkanCoreHandlerImpl {
+    MaestroVulkanCoreHandler pub;
 
     MaestroLoggerHandler *logger;
 
     VkPhysicalDevice *devices;
     uint32_t device_count;
-} MaestroVulkanInstanceHandlerImpl;
+} MaestroVulkanCoreHandlerImpl;
 
 typedef struct MaestroVulkanDeviceActorImpl {
     MaestroVulkanDeviceActor pub;
 
     MaestroLoggerHandler *logger;
-
-    VkQueue  graphics_queue;
-    uint32_t graphics_family;
-
-    VkQueue  compute_queue;
-    uint32_t compute_family;
-
-    VkQueue  transfer_queue;
-    uint32_t transfer_family;
-
-    VkQueue  present_queue;
-    uint32_t present_family;
 } MaestroVulkanDeviceActorImpl;
 
 
 int32_t default_device_score(VkPhysicalDevice device);
+
+HarpResult vulkan_create_buffer(MaestroVulkanDeviceActor *device, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags mem_props, VkBuffer *out_buffer, VkDeviceMemory *out_memory);
+void vulkan_destroy_buffer(MaestroVulkanDeviceActor *device, VkBuffer buffer, VkDeviceMemory memory);
 
 
 HarpResult init_vulkan_instance(HarpCoreHandler *core_handler, HarpHandlerBase *base, HarpCreatorBase *creator);

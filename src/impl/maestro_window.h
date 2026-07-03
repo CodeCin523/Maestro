@@ -34,15 +34,15 @@ typedef struct MaestroWindowHandlerImpl {
     uint8_t warp_skip;
 
 #if HARP_PLATFORM_WINDOWS
-    HINSTANCE     h_instance;
-    HWND          hwnd;
+    HINSTANCE h_instance;
+    HWND hwnd;
     WINDOWPLACEMENT saved_placement;
 #elif HARP_PLATFORM_LINUX
-    Display          *display;
+    Display *display;
     xcb_connection_t *connection;
-    xcb_window_t      window;
-    xcb_screen_t     *screen;
-    xcb_cursor_t      blank_cursor;
+    xcb_window_t window;
+    xcb_screen_t *screen;
+    xcb_cursor_t blank_cursor;
 
     xcb_atom_t wm_protocols;
     xcb_atom_t wm_delete_win;

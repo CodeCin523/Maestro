@@ -85,7 +85,7 @@ typedef struct MaestroWindowHandler MaestroWindowHandler;
 /*  HANDLER                                                                         */
 /* ================================================================================ */
 
-#define MAESTRO_WINDOW_HANDLER_NAME    "MaestroWindowHandler"
+#define MAESTRO_WINDOW_HANDLER_NAME "MaestroWindowHandler"
 #define MAESTRO_WINDOW_HANDLER_VERSION HARP_MAKE_VERSION(1,3,0)
 
 struct MaestroWindowCreator {
@@ -111,18 +111,15 @@ struct MaestroWindowHandler {
     void (*get_vulkan_extensions)(MaestroWindowHandler *h, uint32_t *out_count, const char **out_extensions);
     HarpResult (*create_vulkan_surface)(MaestroWindowHandler *h, VkInstance instance, VkSurfaceKHR *out_surface);
 
-    // keys[k]: bit 0 = pressed this frame, bit 1 = pressed previous frame
-    MaestroInputBits  keys[MAESTRO_KEY_COUNT];
+    MaestroInputBits keys[MAESTRO_KEY_COUNT];
+    MaestroMouseBits mouse_buttons;
 
-    // bits 0-2: current L/R/M buttons; bits 3-5: previous L/R/M buttons
-    MaestroMouseBits  mouse_buttons;
-
-    int32_t  mouse_x;
-    int32_t  mouse_y;
-    int32_t  prev_mouse_x;
-    int32_t  prev_mouse_y;
-    int32_t  scroll;    // vertical scroll delta this pump; positive = up / forward
-    int32_t  scroll_x;  // horizontal scroll delta this pump; positive = right
+    int32_t mouse_x;
+    int32_t mouse_y;
+    int32_t prev_mouse_x;
+    int32_t prev_mouse_y;
+    int32_t scroll;     // vertical scroll delta this pump; positive = up / forward
+    int32_t scroll_x;   // horizontal scroll delta this pump; positive = right
 
     MaestroWindowFlags flags;
     uint32_t width;

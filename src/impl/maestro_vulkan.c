@@ -11,7 +11,7 @@
 
 
 /* ================================================================================ */
-/*  CONSTANTS                                                                        */
+/*  CONSTANTS                                                                       */
 /* ================================================================================ */
 
 static const char *const VALIDATION_LAYERS[] = {
@@ -21,7 +21,7 @@ static const uint32_t VALIDATION_LAYER_COUNT = sizeof(VALIDATION_LAYERS) / sizeo
 
 
 /* ================================================================================ */
-/*  DEBUG MESSENGER                                                                  */
+/*  DEBUG MESSENGER                                                                 */
 /* ================================================================================ */
 
 static VKAPI_ATTR VkBool32 VKAPI_CALL debug_messenger_callback(
@@ -38,9 +38,8 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debug_messenger_callback(
         MAESTRO_LOG_ERROR(logger, "Vulkan", data->pMessage);
     else if(severity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT)
         MAESTRO_LOG_WARN(logger, "Vulkan", data->pMessage);
-    else {
+    else
         MAESTRO_LOG_DEBUG(logger, "Vulkan", data->pMessage);
-    }
 
     return VK_FALSE;
 }
@@ -61,7 +60,7 @@ static void fill_debug_messenger_info(VkDebugUtilsMessengerCreateInfoEXT *info, 
 
 
 /* ================================================================================ */
-/*  DEFAULT SCORE                                                                    */
+/*  DEFAULT SCORE                                                                   */
 /* ================================================================================ */
 
 int32_t default_device_score(VkPhysicalDevice device) {
@@ -78,21 +77,21 @@ int32_t default_device_score(VkPhysicalDevice device) {
 
 
 /* ================================================================================ */
-/*  VULKAN INSTANCE HANDLER                                                          */
+/*  VULKAN CORE HANDLER                                                             */
 /* ================================================================================ */
 
 HarpResult init_vulkan_instance(HarpCoreHandler *core_handler, HarpHandlerBase *base, HarpCreatorBase *creator_base) {
-    MaestroVulkanInstanceCreator creator = {
-        .app_name         = "MaestroApp",
-        .app_version      = HARP_MAKE_VERSION(1, 0, 0),
-        .extensions       = NULL,
-        .extension_count  = 0,
+    MaestroVulkanCoreCreator creator = {
+        .app_name          = "MaestroApp",
+        .app_version       = HARP_MAKE_VERSION(1, 0, 0),
+        .extensions        = NULL,
+        .extension_count   = 0,
         .enable_validation = HARP_DEBUG
     };
     if(!(creator_base->flags & HARP_CREATOR_FLAG_DEFAULT_CREATOR))
-        creator = *(MaestroVulkanInstanceCreator *)creator_base;
+        creator = *(MaestroVulkanCoreCreator *)creator_base;
 
-    MaestroVulkanInstanceHandlerImpl *impl = HARP_HANDLER_AS(MaestroVulkanInstanceHandlerImpl, base);
+    MaestroVulkanCoreHandlerImpl *impl = HARP_HANDLER_AS(MaestroVulkanCoreHandlerImpl, base);
 
     if(core_handler->get_handler(
         core_handler,
@@ -105,7 +104,6 @@ HarpResult init_vulkan_instance(HarpCoreHandler *core_handler, HarpHandlerBase *
     validation = 1;
 #endif
 
-    // Validation layer availability check
     if(validation) {
         uint32_t layer_count = 0;
         vkEnumerateInstanceLayerProperties(&layer_count, NULL);
@@ -134,11 +132,8 @@ HarpResult init_vulkan_instance(HarpCoreHandler *core_handler, HarpHandlerBase *
         free(available);
     }
 
-    // Extension list: user extensions (expected to include surface extensions) + debug utils
-    uint32_t ext_count = (uint32_t)creator.extension_count;
-    const uint32_t max_extra = 1;
-
-    const char **extensions = malloc((ext_count + max_extra) * sizeof(const char *));
+    uint32_t ext_count = creator.extension_count;
+    const char **extensions = malloc((ext_count + 1) * sizeof(const char *));
     if(!extensions)
         return HARP_RESULT_OUT_OF_MEMORY;
 
@@ -187,7 +182,6 @@ HarpResult init_vulkan_instance(HarpCoreHandler *core_handler, HarpHandlerBase *
         return HARP_RESULT_FAILED;
     }
 
-    // Debug messenger — reuse debug_info, already filled above
     if(validation) {
         PFN_vkCreateDebugUtilsMessengerEXT fn = (PFN_vkCreateDebugUtilsMessengerEXT)
             vkGetInstanceProcAddr(impl->pub.instance, "vkCreateDebugUtilsMessengerEXT");
@@ -200,7 +194,6 @@ HarpResult init_vulkan_instance(HarpCoreHandler *core_handler, HarpHandlerBase *
         }
     }
 
-    // Enumerate and cache physical devices
     vkEnumeratePhysicalDevices(impl->pub.instance, &impl->device_count, NULL);
     if(impl->device_count == 0) {
         MAESTRO_LOG_FATAL(impl->logger, base->name, "No Vulkan-capable GPU found");
@@ -227,10 +220,10 @@ HarpResult init_vulkan_instance(HarpCoreHandler *core_handler, HarpHandlerBase *
 HarpResult term_vulkan_instance(HarpCoreHandler *core_handler, HarpHandlerBase *base) {
     HARP_UNUSED(core_handler);
 
-    MaestroVulkanInstanceHandlerImpl *impl = HARP_HANDLER_AS(MaestroVulkanInstanceHandlerImpl, base);
+    MaestroVulkanCoreHandlerImpl *impl = HARP_HANDLER_AS(MaestroVulkanCoreHandlerImpl, base);
 
     free(impl->devices);
-    impl->devices = NULL;
+    impl->devices      = NULL;
     impl->device_count = 0;
 
     if(impl->pub.debug_messenger != VK_NULL_HANDLE) {
@@ -251,14 +244,101 @@ HarpResult term_vulkan_instance(HarpCoreHandler *core_handler, HarpHandlerBase *
 
 
 /* ================================================================================ */
-/*  VULKAN DEVICE ACTOR                                                              */
+/*  BUFFER HELPERS                                                                  */
 /* ================================================================================ */
+
+HarpResult vulkan_create_buffer(
+    MaestroVulkanDeviceActor *actor,
+    VkDeviceSize              size,
+    VkBufferUsageFlags        usage,
+    VkMemoryPropertyFlags     mem_props,
+    VkBuffer                 *out_buffer,
+    VkDeviceMemory           *out_memory)
+{
+    *out_buffer = VK_NULL_HANDLE;
+    *out_memory = VK_NULL_HANDLE;
+
+    VkBufferCreateInfo buf_info = {
+        .sType       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .size        = size,
+        .usage       = usage,
+        .sharingMode = VK_SHARING_MODE_EXCLUSIVE
+    };
+
+    if(vkCreateBuffer(actor->device, &buf_info, NULL, out_buffer) != VK_SUCCESS)
+        return HARP_RESULT_FAILED;
+
+    VkMemoryRequirements mem_req;
+    vkGetBufferMemoryRequirements(actor->device, *out_buffer, &mem_req);
+
+    VkPhysicalDeviceMemoryProperties mem_dev;
+    vkGetPhysicalDeviceMemoryProperties(actor->physical_device, &mem_dev);
+
+    uint32_t mem_type = UINT32_MAX;
+    for(uint32_t i = 0; i < mem_dev.memoryTypeCount; ++i) {
+        if((mem_req.memoryTypeBits & (1u << i)) &&
+           (mem_dev.memoryTypes[i].propertyFlags & mem_props) == mem_props) {
+            mem_type = i;
+            break;
+        }
+    }
+
+    if(mem_type == UINT32_MAX) {
+        vkDestroyBuffer(actor->device, *out_buffer, NULL);
+        *out_buffer = VK_NULL_HANDLE;
+        return HARP_RESULT_FAILED;
+    }
+
+    VkMemoryAllocateInfo alloc_info = {
+        .sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+        .allocationSize  = mem_req.size,
+        .memoryTypeIndex = mem_type
+    };
+
+    if(vkAllocateMemory(actor->device, &alloc_info, NULL, out_memory) != VK_SUCCESS) {
+        vkDestroyBuffer(actor->device, *out_buffer, NULL);
+        *out_buffer = VK_NULL_HANDLE;
+        return HARP_RESULT_FAILED;
+    }
+
+    if(vkBindBufferMemory(actor->device, *out_buffer, *out_memory, 0) != VK_SUCCESS) {
+        vkFreeMemory(actor->device, *out_memory, NULL);
+        vkDestroyBuffer(actor->device, *out_buffer, NULL);
+        *out_buffer = VK_NULL_HANDLE;
+        *out_memory = VK_NULL_HANDLE;
+        return HARP_RESULT_FAILED;
+    }
+
+    return HARP_RESULT_OK;
+}
+
+void vulkan_destroy_buffer(
+    MaestroVulkanDeviceActor *actor,
+    VkBuffer                  buffer,
+    VkDeviceMemory            memory)
+{
+    if(memory != VK_NULL_HANDLE) vkFreeMemory(actor->device, memory, NULL);
+    if(buffer != VK_NULL_HANDLE) vkDestroyBuffer(actor->device, buffer, NULL);
+}
+
+
+/* ================================================================================ */
+/*  VULKAN DEVICE ACTOR                                                             */
+/* ================================================================================ */
+
+static int queue_priority(VkQueueFlags flags, uint8_t supports_present) {
+    if((flags & VK_QUEUE_GRAPHICS_BIT) && supports_present) return 0;
+    if(flags & VK_QUEUE_GRAPHICS_BIT)                       return 1;
+    if(flags & VK_QUEUE_COMPUTE_BIT)                        return 2;
+    return 3;
+}
 
 HarpResult create_vulkan_device(HarpCoreHandler *core_handler, HarpActorBase *base, HarpCreatorBase *creator_base) {
     MaestroVulkanDeviceCreator creator = {
         .pfn_score        = NULL,
-        .request_compute  = 0,
-        .request_transfer = 0,
+        .features         = NULL,
+        .extensions       = NULL,
+        .extension_count  = 0,
         .surface          = VK_NULL_HANDLE,
     };
     if(!(creator_base->flags & HARP_CREATOR_FLAG_DEFAULT_CREATOR))
@@ -269,28 +349,28 @@ HarpResult create_vulkan_device(HarpCoreHandler *core_handler, HarpActorBase *ba
     HarpHandlerBase *handler_base = NULL;
     if(core_handler->get_handler(
         core_handler,
-        &HARP_DEPENDENCY(MAESTRO_VULKAN_INSTANCE_HANDLER_NAME, 0, UINT32_MAX),
+        &HARP_DEPENDENCY(MAESTRO_VULKAN_CORE_HANDLER_NAME, 0, UINT32_MAX),
         &handler_base) != HARP_RESULT_OK)
             return HARP_RESULT_FAILED;
 
-    MaestroVulkanInstanceHandlerImpl *instance = HARP_HANDLER_AS(MaestroVulkanInstanceHandlerImpl, handler_base);
-    impl->logger = instance->logger;
+    MaestroVulkanCoreHandlerImpl *core = HARP_HANDLER_AS(MaestroVulkanCoreHandlerImpl, handler_base);
+    impl->logger = core->logger;
 
     MaestroVulkanDeviceScorePfn score_fn = creator.pfn_score
         ? creator.pfn_score
-        : instance->pub.pfn_default_device_score;
+        : core->pub.pfn_default_device_score;
 
-    // Score remaining physical devices, pick the best
+    /* Score and select the best physical device. */
     VkPhysicalDevice best_device = VK_NULL_HANDLE;
-    int32_t best_score = 0;
+    int32_t  best_score = 0;
     uint32_t best_index = 0;
 
-    for(uint32_t i = 0; i < instance->device_count; ++i) {
-        int32_t score = score_fn(instance->devices[i]);
+    for(uint32_t i = 0; i < core->device_count; ++i) {
+        int32_t score = score_fn(core->devices[i]);
         if(score > best_score) {
             best_score = score;
-            best_device = instance->devices[i];
-            best_index = i;
+            best_device = core->devices[i];
+            best_index  = i;
         }
     }
 
@@ -299,11 +379,11 @@ HarpResult create_vulkan_device(HarpCoreHandler *core_handler, HarpActorBase *ba
         return HARP_RESULT_FAILED;
     }
 
-    // Remove from instance list: swap with last element
-    instance->devices[best_index] = instance->devices[--instance->device_count];
+    /* Remove from pool: swap with last element. */
+    core->devices[best_index] = core->devices[--core->device_count];
     impl->pub.physical_device = best_device;
 
-    // If a surface is provided, verify VK_KHR_swapchain is supported by this device
+    /* Verify swapchain extension support when a surface is provided. */
     if(creator.surface != VK_NULL_HANDLE) {
         uint32_t ext_count = 0;
         vkEnumerateDeviceExtensionProperties(best_device, NULL, &ext_count, NULL);
@@ -329,7 +409,7 @@ HarpResult create_vulkan_device(HarpCoreHandler *core_handler, HarpActorBase *ba
         }
     }
 
-    // Find queue families
+    /* Enumerate queue families and collect one entry per useful family. */
     uint32_t family_count = 0;
     vkGetPhysicalDeviceQueueFamilyProperties(best_device, &family_count, NULL);
 
@@ -339,149 +419,107 @@ HarpResult create_vulkan_device(HarpCoreHandler *core_handler, HarpActorBase *ba
 
     vkGetPhysicalDeviceQueueFamilyProperties(best_device, &family_count, families);
 
-    uint32_t graphics_family         = UINT32_MAX;
-    uint32_t compute_family          = UINT32_MAX;
-    uint32_t transfer_family         = UINT32_MAX;
-    uint32_t transfer_family_compute = UINT32_MAX; // COMPUTE|TRANSFER fallback
-    uint32_t present_family          = UINT32_MAX;
+    /* Temporary queue list, unsorted. */
+    MaestroVulkanQueue tmp[MAESTRO_VULKAN_MAX_QUEUES];
+    uint32_t tmp_count = 0;
 
-    for(uint32_t i = 0; i < family_count; ++i) {
+    for(uint32_t i = 0; i < family_count && tmp_count < MAESTRO_VULKAN_MAX_QUEUES; ++i) {
         VkQueueFlags flags = families[i].queueFlags;
 
-        if(graphics_family == UINT32_MAX && (flags & VK_QUEUE_GRAPHICS_BIT))
-            graphics_family = i;
+        if(!(flags & (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT)))
+            continue;
 
-        // Prefer dedicated compute (no graphics bit)
-        if(creator.request_compute && compute_family == UINT32_MAX
-            && (flags & VK_QUEUE_COMPUTE_BIT) && !(flags & VK_QUEUE_GRAPHICS_BIT))
-            compute_family = i;
+        VkBool32 present = VK_FALSE;
+        if(creator.surface != VK_NULL_HANDLE)
+            vkGetPhysicalDeviceSurfaceSupportKHR(best_device, i, creator.surface, &present);
 
-        // Prefer transfer-only; accept compute+transfer as secondary
-        if(creator.request_transfer && (flags & VK_QUEUE_TRANSFER_BIT) && !(flags & VK_QUEUE_GRAPHICS_BIT)) {
-            if(transfer_family == UINT32_MAX && !(flags & VK_QUEUE_COMPUTE_BIT))
-                transfer_family = i;
-            else if(transfer_family_compute == UINT32_MAX && (flags & VK_QUEUE_COMPUTE_BIT))
-                transfer_family_compute = i;
-        }
-
-        if(creator.surface != VK_NULL_HANDLE && present_family == UINT32_MAX) {
-            VkBool32 supported = VK_FALSE;
-            vkGetPhysicalDeviceSurfaceSupportKHR(best_device, i, creator.surface, &supported);
-            if(supported)
-                present_family = i;
-        }
+        tmp[tmp_count++] = (MaestroVulkanQueue){
+            .queue            = VK_NULL_HANDLE,
+            .family           = i,
+            .flags            = flags,
+            .supports_present = (uint8_t)present
+        };
     }
-
-    if(creator.request_transfer && transfer_family == UINT32_MAX)
-        transfer_family = transfer_family_compute;
 
     free(families);
 
-    if(graphics_family == UINT32_MAX) {
-        MAESTRO_LOG_FATAL(impl->logger, base->name, "No graphics queue family found");
-        return HARP_RESULT_FAILED;
+    /* Validate: at least one queue must support present when a surface is given. */
+    if(creator.surface != VK_NULL_HANDLE) {
+        uint8_t found_present = 0;
+        for(uint32_t i = 0; i < tmp_count; ++i)
+            if(tmp[i].supports_present) { found_present = 1; break; }
+
+        if(!found_present) {
+            MAESTRO_LOG_FATAL(impl->logger, base->name, "No queue family supports present for this surface");
+            return HARP_RESULT_FAILED;
+        }
     }
 
-    if(creator.surface != VK_NULL_HANDLE && present_family == UINT32_MAX) {
-        MAESTRO_LOG_FATAL(impl->logger, base->name, "No present queue family found for surface");
-        return HARP_RESULT_FAILED;
+    /* Insertion sort by priority: graphics+present > graphics > compute > transfer. */
+    for(uint32_t i = 1; i < tmp_count; ++i) {
+        MaestroVulkanQueue key = tmp[i];
+        int key_prio = queue_priority(key.flags, key.supports_present);
+        int32_t j = (int32_t)i - 1;
+        while(j >= 0 && queue_priority(tmp[j].flags, tmp[j].supports_present) > key_prio) {
+            tmp[j + 1] = tmp[j];
+            --j;
+        }
+        tmp[j + 1] = key;
     }
 
-    // Fallback to graphics family if no dedicated family found
-    if(creator.request_compute  && compute_family  == UINT32_MAX) compute_family  = graphics_family;
-    if(creator.request_transfer && transfer_family == UINT32_MAX) transfer_family = graphics_family;
-
-    // Build unique queue create infos
+    /* Build unique VkDeviceQueueCreateInfo array. */
     static const float priority = 1.0f;
-    VkDeviceQueueCreateInfo queue_infos[4];
-    uint32_t unique_families[4];
-    uint32_t unique_count = 0;
-
-    unique_families[unique_count] = graphics_family;
-    queue_infos[unique_count++] = (VkDeviceQueueCreateInfo){
-        .sType            = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-        .queueFamilyIndex = graphics_family,
-        .queueCount       = 1,
-        .pQueuePriorities = &priority
-    };
-
-    if(creator.request_compute && compute_family != graphics_family) {
-        unique_families[unique_count] = compute_family;
-        queue_infos[unique_count++] = (VkDeviceQueueCreateInfo){
+    VkDeviceQueueCreateInfo queue_infos[MAESTRO_VULKAN_MAX_QUEUES];
+    for(uint32_t i = 0; i < tmp_count; ++i) {
+        queue_infos[i] = (VkDeviceQueueCreateInfo){
             .sType            = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-            .queueFamilyIndex = compute_family,
+            .queueFamilyIndex = tmp[i].family,
             .queueCount       = 1,
             .pQueuePriorities = &priority
         };
     }
 
-    if(creator.request_transfer) {
-        uint8_t already = 0;
-        for(uint32_t i = 0; i < unique_count; ++i)
-            if(unique_families[i] == transfer_family) { already = 1; break; }
+    /* Merge user extensions with VK_KHR_swapchain when needed. */
+    uint32_t total_ext_count = creator.extension_count;
+    uint8_t  needs_swapchain = (creator.surface != VK_NULL_HANDLE);
+    if(needs_swapchain) total_ext_count++;
 
-        if(!already) {
-            unique_families[unique_count] = transfer_family;
-            queue_infos[unique_count++] = (VkDeviceQueueCreateInfo){
-                .sType            = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-                .queueFamilyIndex = transfer_family,
-                .queueCount       = 1,
-                .pQueuePriorities = &priority
-            };
-        }
+    const char **all_extensions = NULL;
+    if(total_ext_count > 0) {
+        all_extensions = malloc(total_ext_count * sizeof(const char *));
+        if(!all_extensions)
+            return HARP_RESULT_OUT_OF_MEMORY;
+
+        for(uint32_t i = 0; i < creator.extension_count; ++i)
+            all_extensions[i] = creator.extensions[i];
+
+        if(needs_swapchain)
+            all_extensions[total_ext_count - 1] = VK_KHR_SWAPCHAIN_EXTENSION_NAME;
     }
 
-    if(creator.surface != VK_NULL_HANDLE) {
-        uint8_t already = 0;
-        for(uint32_t i = 0; i < unique_count; ++i)
-            if(unique_families[i] == present_family) { already = 1; break; }
-
-        if(!already) {
-            unique_families[unique_count] = present_family;
-            queue_infos[unique_count++] = (VkDeviceQueueCreateInfo){
-                .sType            = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-                .queueFamilyIndex = present_family,
-                .queueCount       = 1,
-                .pQueuePriorities = &priority
-            };
-        }
-    }
-
-    static const char *const swapchain_ext = VK_KHR_SWAPCHAIN_EXTENSION_NAME;
     VkDeviceCreateInfo device_info = {
         .sType                   = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
-        .queueCreateInfoCount    = unique_count,
+        .pNext                   = creator.features,  /* VkPhysicalDeviceFeatures2 chain, or NULL */
+        .queueCreateInfoCount    = tmp_count,
         .pQueueCreateInfos       = queue_infos,
-        .enabledExtensionCount   = creator.surface != VK_NULL_HANDLE ? 1 : 0,
-        .ppEnabledExtensionNames = creator.surface != VK_NULL_HANDLE ? &swapchain_ext : NULL,
+        .enabledExtensionCount   = total_ext_count,
+        .ppEnabledExtensionNames = all_extensions,
+        .pEnabledFeatures        = NULL  /* must be NULL when using pNext features chain */
     };
 
-    if(vkCreateDevice(best_device, &device_info, NULL, &impl->pub.device) != VK_SUCCESS) {
+    VkResult vk_res = vkCreateDevice(best_device, &device_info, NULL, &impl->pub.device);
+    free(all_extensions);
+
+    if(vk_res != VK_SUCCESS) {
         MAESTRO_LOG_FATAL(impl->logger, base->name, "Failed to create logical device");
         return HARP_RESULT_FAILED;
     }
 
-    vkGetDeviceQueue(impl->pub.device, graphics_family, 0, &impl->graphics_queue);
-    impl->graphics_family = graphics_family;
-
-    if(creator.request_compute) {
-        vkGetDeviceQueue(impl->pub.device, compute_family, 0, &impl->compute_queue);
-        impl->compute_family = compute_family;
-    }
-
-    if(creator.request_transfer) {
-        vkGetDeviceQueue(impl->pub.device, transfer_family, 0, &impl->transfer_queue);
-        impl->transfer_family = transfer_family;
-    }
-
-    impl->pub.present_family = UINT32_MAX;
-    impl->present_family     = UINT32_MAX;
-    impl->present_queue      = VK_NULL_HANDLE;
-
-    if(creator.surface != VK_NULL_HANDLE) {
-        vkGetDeviceQueue(impl->pub.device, present_family, 0, &impl->present_queue);
-        impl->present_family     = present_family;
-        impl->pub.present_family = present_family;
+    /* Retrieve queue handles and fill the public array. */
+    impl->pub.queue_count = tmp_count;
+    for(uint32_t i = 0; i < tmp_count; ++i) {
+        impl->pub.queues[i] = tmp[i];
+        vkGetDeviceQueue(impl->pub.device, tmp[i].family, 0, &impl->pub.queues[i].queue);
     }
 
     MAESTRO_LOG_INFO(impl->logger, base->name, "Vulkan device created");
@@ -497,24 +535,20 @@ HarpResult destroy_vulkan_device(HarpCoreHandler *core_handler, HarpActorBase *b
         impl->pub.device = VK_NULL_HANDLE;
     }
 
-    // Return physical device to instance pool
+    /* Return physical device to the pool. */
     HarpHandlerBase *handler_base = NULL;
     if(impl->pub.physical_device != VK_NULL_HANDLE
         && core_handler->get_handler(
             core_handler,
-            &HARP_DEPENDENCY(MAESTRO_VULKAN_INSTANCE_HANDLER_NAME, 0, UINT32_MAX),
+            &HARP_DEPENDENCY(MAESTRO_VULKAN_CORE_HANDLER_NAME, 0, UINT32_MAX),
             &handler_base) == HARP_RESULT_OK)
     {
-        MaestroVulkanInstanceHandlerImpl *instance = HARP_HANDLER_AS(MaestroVulkanInstanceHandlerImpl, handler_base);
-        instance->devices[instance->device_count++] = impl->pub.physical_device;
+        MaestroVulkanCoreHandlerImpl *core = HARP_HANDLER_AS(MaestroVulkanCoreHandlerImpl, handler_base);
+        core->devices[core->device_count++] = impl->pub.physical_device;
         impl->pub.physical_device = VK_NULL_HANDLE;
     }
 
-    impl->graphics_queue = VK_NULL_HANDLE;
-    impl->compute_queue  = VK_NULL_HANDLE;
-    impl->transfer_queue = VK_NULL_HANDLE;
-    impl->present_queue  = VK_NULL_HANDLE;
-    impl->present_family = UINT32_MAX;
+    impl->pub.queue_count = 0;
 
     return HARP_RESULT_OK;
 }

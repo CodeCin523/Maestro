@@ -17,10 +17,10 @@
 /*  NAMES                                                                           */
 /* ================================================================================ */
 
-const char * const maestro_name_logger = MAESTRO_LOGGER_HANDLER_NAME;
-const char * const maestro_name_window = MAESTRO_WINDOW_HANDLER_NAME;
-const char * const maestro_name_vulkan_instance = MAESTRO_VULKAN_INSTANCE_HANDLER_NAME;
-const char * const maestro_name_vulkan_device = MAESTRO_VULKAN_DEVICE_ACTOR_NAME;
+const char * const maestro_name_logger            = MAESTRO_LOGGER_HANDLER_NAME;
+const char * const maestro_name_window            = MAESTRO_WINDOW_HANDLER_NAME;
+const char * const maestro_name_vulkan_core       = MAESTRO_VULKAN_CORE_HANDLER_NAME;
+const char * const maestro_name_vulkan_device     = MAESTRO_VULKAN_DEVICE_ACTOR_NAME;
 
 
 /* ================================================================================ */
@@ -34,9 +34,9 @@ HarpResult maestro_register(HarpCoreHandler *core) {
     HarpActorDesc actor_desc        = {0};
 
     HarpDependencyDesc deps[] = {
-        {maestro_name_logger,          0, UINT32_MAX},
-        {maestro_name_window,          0, UINT32_MAX},
-        {maestro_name_vulkan_instance, 0, UINT32_MAX}
+        {maestro_name_logger,        0, UINT32_MAX},
+        {maestro_name_window,        0, UINT32_MAX},
+        {maestro_name_vulkan_core,   0, UINT32_MAX}
     };
 
     // LOGGER_HANDLER
@@ -57,12 +57,12 @@ HarpResult maestro_register(HarpCoreHandler *core) {
 
     MaestroLoggerHandler *logger = HARP_HANDLER_AS(MaestroLoggerHandler, handler_base);
 
-    logger->log = logger_fallback_log;
-    logger->logf = logger_fallback_logf;
+    logger->log   = logger_fallback_log;
+    logger->logf  = logger_fallback_logf;
     logger->flush = logger_flush;
 
     core->handler_set_serving(core, handler_base, 1);
-    
+
     // WINDOW_HANDLER
     handler_desc = (HarpHandlerDesc) {
         .name               = maestro_name_window,
@@ -95,12 +95,12 @@ HarpResult maestro_register(HarpCoreHandler *core) {
 
     core->handler_set_serving(core, handler_base, 1);
 
-    // VULKAN_INSTANCE_HANDLER
+    // VULKAN_CORE_HANDLER
     handler_desc = (HarpHandlerDesc) {
-        .name               = maestro_name_vulkan_instance,
-        .version            = MAESTRO_VULKAN_INSTANCE_HANDLER_VERSION,
-        .instance_size      = sizeof(MaestroVulkanInstanceHandlerImpl),
-        .instance_alignment = alignof(MaestroVulkanInstanceHandlerImpl),
+        .name               = maestro_name_vulkan_core,
+        .version            = MAESTRO_VULKAN_CORE_HANDLER_VERSION,
+        .instance_size      = sizeof(MaestroVulkanCoreHandlerImpl),
+        .instance_alignment = alignof(MaestroVulkanCoreHandlerImpl),
         .pfn_init           = init_vulkan_instance,
         .pfn_term           = term_vulkan_instance,
         .p_dependencies     = NULL,
@@ -111,21 +111,23 @@ HarpResult maestro_register(HarpCoreHandler *core) {
     if(res != HARP_RESULT_OK)
         return res;
 
-    MaestroVulkanInstanceHandler *vulkan_instance = HARP_HANDLER_AS(MaestroVulkanInstanceHandler, handler_base);
+    MaestroVulkanCoreHandler *vulkan_core = HARP_HANDLER_AS(MaestroVulkanCoreHandler, handler_base);
 
-    vulkan_instance->pfn_default_device_score = default_device_score;
+    vulkan_core->pfn_default_device_score = default_device_score;
+    vulkan_core->create_buffer            = vulkan_create_buffer;
+    vulkan_core->destroy_buffer           = vulkan_destroy_buffer;
 
     core->handler_set_serving(core, handler_base, 1);
-    
+
     // VULKAN_DEVICE_ACTOR
     actor_desc = (HarpActorDesc) {
-        .name = maestro_name_vulkan_device,
-        .version = MAESTRO_VULKAN_DEVICE_ACTOR_VERSION,
-        .instance_size = sizeof(MaestroVulkanDeviceActorImpl),
+        .name               = maestro_name_vulkan_device,
+        .version            = MAESTRO_VULKAN_DEVICE_ACTOR_VERSION,
+        .instance_size      = sizeof(MaestroVulkanDeviceActorImpl),
         .instance_alignment = alignof(MaestroVulkanDeviceActorImpl),
-        .pfn_create = create_vulkan_device,
-        .pfn_destroy = destroy_vulkan_device,
-        .parent_handler = deps[2]
+        .pfn_create         = create_vulkan_device,
+        .pfn_destroy        = destroy_vulkan_device,
+        .parent_handler     = deps[2]
     };
 
     res = core->register_actor(core, &actor_desc);
@@ -137,12 +139,12 @@ HarpResult maestro_register(HarpCoreHandler *core) {
 
 HarpResult harp_package_query(HarpPackageDesc **out_desc) {
     static HarpPackageDesc package_desc = {
-        .name = MAESTRO_PACKAGE_NAME,
+        .name    = MAESTRO_PACKAGE_NAME,
         .version = MAESTRO_PACKAGE_VERSION,
 
         .pfn_register = maestro_register,
 
-        .p_dependencies = NULL,
+        .p_dependencies   = NULL,
         .dependency_count = 0
     };
 

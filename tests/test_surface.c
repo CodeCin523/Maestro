@@ -57,13 +57,13 @@ static void assert_harp(HarpResult r, const char *msg) {
 /* GLOBALS                                                    */
 /* ========================================================= */
 
-static HarpRuntime                  *g_runtime      = NULL;
-static HarpCoreHandler              *g_core         = NULL;
-static MaestroLoggerHandler         *g_logger       = NULL;
-static MaestroWindowHandler         *g_window       = NULL;
-static MaestroVulkanInstanceHandler *g_instance     = NULL;
-static VkSurfaceKHR                  g_surface      = VK_NULL_HANDLE;
-static HarpActorBase                *g_device_actor = NULL;
+static HarpRuntime              *g_runtime      = NULL;
+static HarpCoreHandler          *g_core         = NULL;
+static MaestroLoggerHandler     *g_logger       = NULL;
+static MaestroWindowHandler     *g_window       = NULL;
+static MaestroVulkanCoreHandler *g_vk           = NULL;
+static VkSurfaceKHR              g_surface      = VK_NULL_HANDLE;
+static HarpActorBase            *g_device_actor = NULL;
 
 static uint32_t     g_ext_count  = 0;
 static const char **g_extensions = NULL;
@@ -165,44 +165,44 @@ static void test_window_init(void) {
 
 
 /* ========================================================= */
-/* VULKAN INSTANCE                                            */
+/* VULKAN CORE                                                */
 /* ========================================================= */
 
-static void test_vulkan_instance_init(void) {
-    TEST_MARKER("VULKAN_INSTANCE", "INIT");
+static void test_vulkan_core_init(void) {
+    TEST_MARKER("VULKAN_CORE", "INIT");
 
     HarpHandlerBase *base = NULL;
     assert_harp(
-        g_core->get_handler(g_core, &HARP_DEPENDENCY(MAESTRO_VULKAN_INSTANCE_HANDLER_NAME, 0, UINT32_MAX), &base),
-        "get Vulkan instance handler"
+        g_core->get_handler(g_core, &HARP_DEPENDENCY(MAESTRO_VULKAN_CORE_HANDLER_NAME, 0, UINT32_MAX), &base),
+        "get Vulkan core handler"
     );
-    g_instance = (MaestroVulkanInstanceHandler *)base;
+    g_vk = (MaestroVulkanCoreHandler *)base;
 
-    MaestroVulkanInstanceCreator creator = {
-        ._base            = { .kind = 0, .flags = 0 },
-        .app_name         = "MaestroSurfaceTest",
-        .app_version      = HARP_MAKE_VERSION(1, 0, 0),
-        .extensions       = g_extensions,
-        .extension_count  = g_ext_count,
+    MaestroVulkanCoreCreator creator = {
+        ._base             = { .kind = 0, .flags = 0 },
+        .app_name          = "MaestroSurfaceTest",
+        .app_version       = HARP_MAKE_VERSION(1, 0, 0),
+        .extensions        = g_extensions,
+        .extension_count   = g_ext_count,
         .enable_validation = 1
     };
 
     HarpResult res = g_core->handler_initialize(
         g_core,
-        MAESTRO_VULKAN_INSTANCE_HANDLER_NAME,
+        MAESTRO_VULKAN_CORE_HANDLER_NAME,
         (const HarpCreatorBase *)&creator
     );
 
     if(res != HARP_RESULT_OK) {
         printf("    [SKIP] Vulkan not available (code=%d)\n", res);
-        g_instance = NULL;
+        g_vk = NULL;
         return;
     }
 
-    assert(g_instance->instance != VK_NULL_HANDLE);
-    printf("    VkInstance: %p\n", (void *)g_instance->instance);
+    assert(g_vk->instance != VK_NULL_HANDLE);
+    printf("    VkInstance: %p\n", (void *)g_vk->instance);
 
-    TEST_MARKER("VULKAN_INSTANCE", "INIT_DONE");
+    TEST_MARKER("VULKAN_CORE", "INIT_DONE");
 }
 
 
@@ -211,14 +211,13 @@ static void test_vulkan_instance_init(void) {
 /* ========================================================= */
 
 static void test_surface_create(void) {
-    if(!g_instance) return;
+    if(!g_vk) return;
 
     TEST_MARKER("SURFACE", "CREATE");
 
     assert(g_window->create_vulkan_surface != NULL);
-
     assert_harp(
-        g_window->create_vulkan_surface(g_window, g_instance->instance, &g_surface),
+        g_window->create_vulkan_surface(g_window, g_vk->instance, &g_surface),
         "create Vulkan surface"
     );
 
@@ -234,16 +233,17 @@ static void test_surface_create(void) {
 /* ========================================================= */
 
 static void test_device_create(void) {
-    if(!g_instance || g_surface == VK_NULL_HANDLE) return;
+    if(!g_vk || g_surface == VK_NULL_HANDLE) return;
 
     TEST_MARKER("DEVICE", "CREATE");
 
     MaestroVulkanDeviceCreator creator = {
-        ._base            = { .kind = 0, .flags = 0 },
-        .pfn_score        = NULL,
-        .request_compute  = 1,
-        .request_transfer = 1,
-        .surface          = g_surface
+        ._base           = { .kind = 0, .flags = 0 },
+        .pfn_score       = NULL,
+        .features        = NULL,
+        .extensions      = NULL,
+        .extension_count = 0,
+        .surface         = g_surface
     };
 
     assert_harp(
@@ -256,12 +256,11 @@ static void test_device_create(void) {
         "create Vulkan device actor"
     );
 
-    MaestroVulkanDeviceActor     *actor = HARP_ACTOR_AS(MaestroVulkanDeviceActor,     g_device_actor);
-    MaestroVulkanDeviceActorImpl *impl  = HARP_ACTOR_AS(MaestroVulkanDeviceActorImpl, g_device_actor);
+    MaestroVulkanDeviceActor *actor = HARP_ACTOR_AS(MaestroVulkanDeviceActor, g_device_actor);
 
     assert(actor->physical_device != VK_NULL_HANDLE);
     assert(actor->device          != VK_NULL_HANDLE);
-    assert(actor->present_family  != UINT32_MAX);
+    assert(actor->queue_count     >  0);
 
     VkPhysicalDeviceProperties props;
     vkGetPhysicalDeviceProperties(actor->physical_device, &props);
@@ -271,10 +270,18 @@ static void test_device_create(void) {
         VK_VERSION_MAJOR(props.apiVersion),
         VK_VERSION_MINOR(props.apiVersion),
         VK_VERSION_PATCH(props.apiVersion));
-    printf("    graphics family  : %u\n", impl->graphics_family);
-    printf("    compute  family  : %u\n", impl->compute_family);
-    printf("    transfer family  : %u\n", impl->transfer_family);
-    printf("    present  family  : %u\n", actor->present_family);
+    printf("    queues created   : %u\n", actor->queue_count);
+
+    uint8_t found_present = 0;
+    for(uint32_t i = 0; i < actor->queue_count; ++i) {
+        MaestroVulkanQueue *q = &actor->queues[i];
+        printf("    queues[%u]: family=%u flags=0x%x present=%u\n",
+               i, q->family, q->flags, q->supports_present);
+        assert(q->queue != VK_NULL_HANDLE);
+        if(q->supports_present) found_present = 1;
+    }
+
+    assert(found_present);
 
     TEST_MARKER("DEVICE", "CREATE_DONE");
 }
@@ -310,7 +317,6 @@ static void test_surface_query(void) {
     printf("        min/max extent      : %ux%u / %ux%u\n",
         caps.minImageExtent.width, caps.minImageExtent.height,
         caps.maxImageExtent.width, caps.maxImageExtent.height);
-    printf("        max array layers    : %u\n", caps.maxImageArrayLayers);
 
     uint32_t format_count = 0;
     vkGetPhysicalDeviceSurfaceFormatsKHR(actor->physical_device, g_surface, &format_count, NULL);
@@ -370,59 +376,43 @@ static void test_device_destroy(void) {
     if(!g_device_actor) return;
 
     TEST_MARKER("DEVICE", "DESTROY");
-
     assert_harp(
         g_core->actor_destroy(g_core, MAESTRO_VULKAN_DEVICE_ACTOR_NAME, g_device_actor),
         "destroy device actor"
     );
     g_device_actor = NULL;
-
     TEST_MARKER("DEVICE", "DESTROY_DONE");
 }
 
 static void test_surface_destroy(void) {
-    if(!g_instance || g_surface == VK_NULL_HANDLE) return;
+    if(!g_vk || g_surface == VK_NULL_HANDLE) return;
 
     TEST_MARKER("SURFACE", "DESTROY");
-
-    vkDestroySurfaceKHR(g_instance->instance, g_surface, NULL);
+    vkDestroySurfaceKHR(g_vk->instance, g_surface, NULL);
     g_surface = VK_NULL_HANDLE;
-
     TEST_MARKER("SURFACE", "DESTROY_DONE");
 }
 
-static void test_vulkan_instance_term(void) {
-    if(!g_instance) return;
+static void test_vulkan_core_term(void) {
+    if(!g_vk) return;
 
-    TEST_MARKER("VULKAN_INSTANCE", "TERM");
-
+    TEST_MARKER("VULKAN_CORE", "TERM");
     assert_harp(
-        g_core->handler_terminate(g_core, MAESTRO_VULKAN_INSTANCE_HANDLER_NAME),
-        "terminate Vulkan instance"
+        g_core->handler_terminate(g_core, MAESTRO_VULKAN_CORE_HANDLER_NAME),
+        "terminate Vulkan core handler"
     );
-
-    TEST_MARKER("VULKAN_INSTANCE", "TERM_DONE");
+    TEST_MARKER("VULKAN_CORE", "TERM_DONE");
 }
 
 static void test_window_term(void) {
     TEST_MARKER("WINDOW", "TERM");
-
-    assert_harp(
-        g_core->handler_terminate(g_core, MAESTRO_WINDOW_HANDLER_NAME),
-        "terminate window"
-    );
-
+    assert_harp(g_core->handler_terminate(g_core, MAESTRO_WINDOW_HANDLER_NAME), "terminate window");
     TEST_MARKER("WINDOW", "TERM_DONE");
 }
 
 static void test_logger_term(void) {
     TEST_MARKER("LOGGER", "TERM");
-
-    assert_harp(
-        g_core->handler_terminate(g_core, MAESTRO_LOGGER_HANDLER_NAME),
-        "terminate logger"
-    );
-
+    assert_harp(g_core->handler_terminate(g_core, MAESTRO_LOGGER_HANDLER_NAME), "terminate logger");
     TEST_MARKER("LOGGER", "TERM_DONE");
 }
 
@@ -447,7 +437,7 @@ int main(int argc, char **argv) {
     test_logger_init();
     test_window_init();
 
-    test_vulkan_instance_init();
+    test_vulkan_core_init();
     test_surface_create();
     test_device_create();
 
@@ -457,7 +447,7 @@ int main(int argc, char **argv) {
     test_device_destroy();
     test_surface_destroy();
 
-    test_vulkan_instance_term();
+    test_vulkan_core_term();
     test_window_term();
     test_logger_term();
 

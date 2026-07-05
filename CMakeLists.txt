@@ -22,6 +22,7 @@ cmake_minimum_required(VERSION 3.17)
   if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
       find_package(PkgConfig REQUIRED)
       pkg_check_modules(XCB REQUIRED xcb)
+      pkg_check_modules(XCB_XINPUT REQUIRED xcb-xinput)
       pkg_check_modules(X11 REQUIRED x11)
       pkg_check_modules(X11_XCB REQUIRED x11-xcb)
   endif()
@@ -88,12 +89,14 @@ cmake_minimum_required(VERSION 3.17)
       target_link_libraries(
           Maestro PRIVATE
           ${XCB_LIBRARIES}
+          ${XCB_XINPUT_LIBRARIES}
           ${X11_LIBRARIES}
           ${X11_XCB_LIBRARIES}
       )
       target_include_directories(
           Maestro PRIVATE
           ${XCB_INCLUDE_DIRS}
+          ${XCB_XINPUT_INCLUDE_DIRS}
           ${X11_INCLUDE_DIRS}
           ${X11_XCB_INCLUDE_DIRS}
       )

@@ -72,8 +72,8 @@ enum {
     MAESTRO_WINDOW_MINIMIZED       = 1 << 1,
     MAESTRO_WINDOW_FOCUSED         = 1 << 2,
     MAESTRO_WINDOW_FULLSCREEN      = 1 << 3,  // managed by set_fullscreen
-    MAESTRO_WINDOW_MOUSE_CAPTURED  = 1 << 4,  // managed by set_mouse_capture
-    MAESTRO_WINDOW_CURSOR_HIDDEN   = 1 << 5,  // managed by set_cursor_visible
+    MAESTRO_WINDOW_MOUSE_CAPTURED  = 1 << 4,  // managed by set_mouse_capture; the cursor is always hidden while captured
+    MAESTRO_WINDOW_CURSOR_HIDDEN   = 1 << 5,  // visibility preference, managed by set_cursor_visible; applied while not captured
     MAESTRO_WINDOW_RESIZED         = 1 << 6,  // set for one pump cycle when size changes
 };
 

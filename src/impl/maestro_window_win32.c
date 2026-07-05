@@ -96,10 +96,14 @@ void window_pump_messages(MaestroWindowHandler *h) {
 
     h->mouse_buttons = (MaestroMouseBits)(((h->mouse_buttons & 0x1Fu) << 5) | handler->held_mouse);
 
-    // In captured mode prev is always the center so DELTA reports displacement from center.
+    // In captured mode prev is always the center so DELTA reports the movement
+    // gathered during this pump. mouse_x starts at the center too; a stale
+    // value would otherwise repeat the previous delta on quiet frames.
     if(h->flags & MAESTRO_WINDOW_MOUSE_CAPTURED) {
         h->prev_mouse_x = (int32_t)(h->width  / 2);
         h->prev_mouse_y = (int32_t)(h->height / 2);
+        h->mouse_x = h->prev_mouse_x;
+        h->mouse_y = h->prev_mouse_y;
     } else {
         h->prev_mouse_x = h->mouse_x;
         h->prev_mouse_y = h->mouse_y;
@@ -111,12 +115,19 @@ void window_pump_messages(MaestroWindowHandler *h) {
         DispatchMessageA(&msg);
     }
 
-    // Warp to center once per pump when captured so the next pump's prev == center.
-    if(h->flags & MAESTRO_WINDOW_MOUSE_CAPTURED) {
+    // With Raw Input, captured mouse_x/y come from the accumulated WM_INPUT
+    // deltas. Then warp back to center so the cursor stays inside the clip
+    // rect. Skipped while unfocused, capture is suspended then.
+    if((h->flags & MAESTRO_WINDOW_MOUSE_CAPTURED) && (h->flags & MAESTRO_WINDOW_FOCUSED)) {
+        if(handler->raw_input) {
+            h->mouse_x = h->prev_mouse_x + handler->raw_accum_x;
+            h->mouse_y = h->prev_mouse_y + handler->raw_accum_y;
+            handler->raw_accum_x = 0;
+            handler->raw_accum_y = 0;
+        }
         POINT center = { (LONG)(h->width / 2), (LONG)(h->height / 2) };
         ClientToScreen(handler->hwnd, &center);
         SetCursorPos(center.x, center.y);
-        handler->warp_skip = 1;
     }
 }
 
@@ -124,6 +135,33 @@ void window_pump_messages(MaestroWindowHandler *h) {
 /* ================================================================================ */
 /*  WINDOW PROCEDURE                                                                */
 /* ================================================================================ */
+
+// Applies clip + capture + center warp. Used when enabling capture and when
+// focus returns while capture is still requested.
+static void win32_apply_mouse_capture(MaestroWindowHandlerImpl *impl) {
+    SetCapture(impl->hwnd);
+
+    RECT rect;
+    GetClientRect(impl->hwnd, &rect);
+    MapWindowPoints(impl->hwnd, NULL, (POINT *)&rect, 2);
+    ClipCursor(&rect);
+
+    POINT center = { (LONG)(impl->pub.width / 2), (LONG)(impl->pub.height / 2) };
+    ClientToScreen(impl->hwnd, &center);
+    SetCursorPos(center.x, center.y);
+    impl->pub.mouse_x      = (int32_t)(impl->pub.width  / 2);
+    impl->pub.mouse_y      = (int32_t)(impl->pub.height / 2);
+    impl->pub.prev_mouse_x = impl->pub.mouse_x;
+    impl->pub.prev_mouse_y = impl->pub.mouse_y;
+
+    impl->raw_accum_x  = 0;
+    impl->raw_accum_y  = 0;
+    impl->has_last_abs = 0;
+
+    // The cursor is always hidden while captured, regardless of the
+    // visibility preference; WM_SETCURSOR keeps it hidden on hover.
+    SetCursor(NULL);
+}
 
 LRESULT CALLBACK win32_process_message(HWND hwnd, UINT msg, WPARAM w_param, LPARAM l_param) {
     if(msg == WM_NCCREATE) {
@@ -158,12 +196,18 @@ LRESULT CALLBACK win32_process_message(HWND hwnd, UINT msg, WPARAM w_param, LPAR
             }
         } break;
         case WM_SETFOCUS:
-            if(handler) handler->pub.flags |= MAESTRO_WINDOW_FOCUSED;
+            if(handler) {
+                handler->pub.flags |= MAESTRO_WINDOW_FOCUSED;
+                // Capture is a persistent request; restore it when focus returns.
+                if(handler->pub.flags & MAESTRO_WINDOW_MOUSE_CAPTURED)
+                    win32_apply_mouse_capture(handler);
+            }
             break;
         case WM_KILLFOCUS:
             if(handler) {
                 handler->pub.flags &= ~MAESTRO_WINDOW_FOCUSED;
-                // Release capture/clip on focus loss to avoid trapping the cursor.
+                // Suspend capture on focus loss to avoid trapping the cursor.
+                // The CAPTURED flag stays set so WM_SETFOCUS can restore it.
                 if(handler->pub.flags & MAESTRO_WINDOW_MOUSE_CAPTURED) {
                     ClipCursor(NULL);
                     ReleaseCapture();
@@ -171,8 +215,10 @@ LRESULT CALLBACK win32_process_message(HWND hwnd, UINT msg, WPARAM w_param, LPAR
             }
             break;
         case WM_SETCURSOR:
-            // Suppress the default cursor when cursor is hidden.
-            if(handler && (handler->pub.flags & MAESTRO_WINDOW_CURSOR_HIDDEN) &&
+            // Suppress the default cursor when hidden by preference or while
+            // captured; capture always hides the cursor.
+            if(handler &&
+               (handler->pub.flags & (MAESTRO_WINDOW_CURSOR_HIDDEN | MAESTRO_WINDOW_MOUSE_CAPTURED)) &&
                LOWORD(l_param) == HTCLIENT) {
                 SetCursor(NULL);
                 return TRUE;
@@ -194,12 +240,47 @@ LRESULT CALLBACK win32_process_message(HWND hwnd, UINT msg, WPARAM w_param, LPAR
         } break;
         case WM_MOUSEMOVE: {
             if(!handler) break;
-            if(handler->warp_skip) {
-                handler->warp_skip = 0;
-                break;
+            // While captured with Raw Input available the WM_INPUT deltas
+            // below drive mouse_x/y; positions include pointer acceleration
+            // and would double count.
+            if(!(handler->pub.flags & MAESTRO_WINDOW_MOUSE_CAPTURED) || !handler->raw_input) {
+                handler->pub.mouse_x = GET_X_LPARAM(l_param);
+                handler->pub.mouse_y = GET_Y_LPARAM(l_param);
             }
-            handler->pub.mouse_x = GET_X_LPARAM(l_param);
-            handler->pub.mouse_y = GET_Y_LPARAM(l_param);
+        } break;
+        case WM_INPUT: {
+            if(!handler) break;
+            if(!(handler->pub.flags & MAESTRO_WINDOW_MOUSE_CAPTURED) ||
+               !(handler->pub.flags & MAESTRO_WINDOW_FOCUSED))
+                break;
+
+            RAWINPUT raw;
+            UINT size = sizeof(raw);
+            if(GetRawInputData((HRAWINPUT)l_param, RID_INPUT, &raw, &size,
+                               sizeof(RAWINPUTHEADER)) == (UINT)-1)
+                break;
+            if(raw.header.dwType != RIM_TYPEMOUSE)
+                break;
+
+            if(raw.data.mouse.usFlags & MOUSE_MOVE_ABSOLUTE) {
+                // Absolute devices (tablets, RDP): normalized 0..65535 over
+                // the screen; derive deltas from consecutive positions.
+                uint8_t virt = (raw.data.mouse.usFlags & MOUSE_VIRTUAL_DESKTOP) != 0;
+                int32_t sw = GetSystemMetrics(virt ? SM_CXVIRTUALSCREEN : SM_CXSCREEN);
+                int32_t sh = GetSystemMetrics(virt ? SM_CYVIRTUALSCREEN : SM_CYSCREEN);
+                int32_t ax = MulDiv(raw.data.mouse.lLastX, sw, 65535);
+                int32_t ay = MulDiv(raw.data.mouse.lLastY, sh, 65535);
+                if(handler->has_last_abs) {
+                    handler->raw_accum_x += ax - handler->last_abs_x;
+                    handler->raw_accum_y += ay - handler->last_abs_y;
+                }
+                handler->last_abs_x   = ax;
+                handler->last_abs_y   = ay;
+                handler->has_last_abs = 1;
+            } else {
+                handler->raw_accum_x += raw.data.mouse.lLastX;
+                handler->raw_accum_y += raw.data.mouse.lLastY;
+            }
         } break;
         case WM_MOUSEWHEEL:
             if(handler)
@@ -246,37 +327,29 @@ void window_set_mouse_capture(MaestroWindowHandler *h, uint8_t captured) {
     MaestroWindowHandlerImpl *impl = (MaestroWindowHandlerImpl *)h;
 
     if(captured) {
-        SetCapture(impl->hwnd);
-
-        RECT rect;
-        GetClientRect(impl->hwnd, &rect);
-        MapWindowPoints(impl->hwnd, NULL, (POINT *)&rect, 2);
-        ClipCursor(&rect);
-
-        // Warp to center immediately.
-        POINT center = { (LONG)(h->width / 2), (LONG)(h->height / 2) };
-        ClientToScreen(impl->hwnd, &center);
-        SetCursorPos(center.x, center.y);
-        impl->warp_skip = 1;
-
+        win32_apply_mouse_capture(impl);
         h->flags |= MAESTRO_WINDOW_MOUSE_CAPTURED;
     } else {
         ClipCursor(NULL);
         ReleaseCapture();
-        impl->warp_skip = 0;
         h->flags &= ~MAESTRO_WINDOW_MOUSE_CAPTURED;
+
+        // Restore the remembered visibility preference.
+        SetCursor((h->flags & MAESTRO_WINDOW_CURSOR_HIDDEN)
+            ? NULL
+            : LoadCursorA(NULL, IDC_ARROW));
     }
 }
 
 void window_set_cursor_visible(MaestroWindowHandler *h, uint8_t visible) {
-    if(visible) {
-        h->flags &= ~MAESTRO_WINDOW_CURSOR_HIDDEN;
-        SetCursor(LoadCursorA(NULL, IDC_ARROW));
-    } else {
-        h->flags |= MAESTRO_WINDOW_CURSOR_HIDDEN;
-        SetCursor(NULL);
-    }
-    // WM_SETCURSOR handles subsequent cursor hover events based on the flag.
+    // The flag stores the visibility preference. While captured the cursor
+    // stays hidden; the preference is applied again on release.
+    if(visible) h->flags &= ~MAESTRO_WINDOW_CURSOR_HIDDEN;
+    else        h->flags |=  MAESTRO_WINDOW_CURSOR_HIDDEN;
+
+    if(!(h->flags & MAESTRO_WINDOW_MOUSE_CAPTURED))
+        SetCursor(visible ? LoadCursorA(NULL, IDC_ARROW) : NULL);
+    // WM_SETCURSOR handles subsequent cursor hover events based on the flags.
 }
 
 static void window_apply_title(MaestroWindowHandlerImpl *impl) {
@@ -447,8 +520,28 @@ HarpResult init_window(HarpCoreHandler *core_handler, HarpHandlerBase *base, Har
 
     snprintf(handler->title_base, sizeof(handler->title_base), "%s", window_creator.title);
     handler->title_ext[0]               = '\0';
-    handler->warp_skip                  = 0;
     memset(&handler->saved_placement, 0, sizeof(handler->saved_placement));
+
+    // Raw Input: unaccelerated per-device deltas for captured mode. Delivered
+    // only while the application is in the foreground, which matches the
+    // focus-suspended capture. Without it captured deltas fall back to
+    // WM_MOUSEMOVE positions, which include pointer acceleration.
+    handler->raw_accum_x  = 0;
+    handler->raw_accum_y  = 0;
+    handler->last_abs_x   = 0;
+    handler->last_abs_y   = 0;
+    handler->has_last_abs = 0;
+
+    RAWINPUTDEVICE rid = {
+        .usUsagePage = 0x01,  /* generic desktop */
+        .usUsage     = 0x02,  /* mouse           */
+        .dwFlags     = 0,
+        .hwndTarget  = handler->hwnd
+    };
+    handler->raw_input = RegisterRawInputDevices(&rid, 1, sizeof(rid)) ? 1 : 0;
+    if(!handler->raw_input)
+        MAESTRO_LOG_WARN(handler->logger, base->name,
+            "Raw Input unavailable, captured mouse deltas fall back to absolute positions");
 
     handler->pub.width                  = (uint32_t)client_width;
     handler->pub.height                 = (uint32_t)client_height;

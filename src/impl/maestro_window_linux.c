@@ -1,5 +1,7 @@
 #include "maestro_window.h"
 
+#include <xcb/xinput.h>
+
 
 #if HARP_PLATFORM_LINUX
 
@@ -96,6 +98,55 @@ static xcb_cursor_t create_blank_cursor(MaestroWindowHandlerImpl *impl) {
     return cursor;
 }
 
+#define LINUX_GRAB_EVENT_MASK \
+    (XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_BUTTON_RELEASE | \
+     XCB_EVENT_MASK_POINTER_MOTION)
+
+// Applies grab + confine + center warp. Used when enabling capture and when
+// focus returns while capture is still requested.
+static void linux_apply_mouse_capture(MaestroWindowHandlerImpl *impl) {
+    MaestroWindowHandler *h = &impl->pub;
+
+    if(impl->blank_cursor == XCB_CURSOR_NONE)
+        impl->blank_cursor = create_blank_cursor(impl);
+
+    // Grab and confine the pointer to the window. The cursor is always hidden
+    // while captured, regardless of the visibility preference; XWayland also
+    // requires a hidden cursor to honor confinement and center warps.
+    xcb_grab_pointer_cookie_t cookie = xcb_grab_pointer(impl->connection, 1, impl->window,
+        LINUX_GRAB_EVENT_MASK,
+        XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC,
+        impl->window,
+        impl->blank_cursor,
+        XCB_CURRENT_TIME);
+
+    // The grab can fail silently, e.g. GrabNotViewable before the window is
+    // mapped or AlreadyGrabbed while another client holds the pointer.
+    xcb_grab_pointer_reply_t *reply = xcb_grab_pointer_reply(impl->connection, cookie, NULL);
+    if(!reply || reply->status != XCB_GRAB_STATUS_SUCCESS) {
+        MAESTRO_LOGF_WARN(impl->logger, impl->pub._base.name,
+            "pointer grab failed (status=%u)", reply ? reply->status : 255u);
+    } else {
+        MAESTRO_LOG_DEBUG(impl->logger, impl->pub._base.name, "pointer grab applied");
+    }
+    free(reply);
+
+    // Warp to center so the next pump starts with a zero delta.
+    xcb_warp_pointer(impl->connection, XCB_NONE, impl->window,
+        0, 0, 0, 0,
+        (int16_t)(h->width  / 2),
+        (int16_t)(h->height / 2));
+    h->mouse_x      = (int32_t)(h->width  / 2);
+    h->mouse_y      = (int32_t)(h->height / 2);
+    h->prev_mouse_x = h->mouse_x;
+    h->prev_mouse_y = h->mouse_y;
+
+    impl->raw_accum_x = 0.0;
+    impl->raw_accum_y = 0.0;
+
+    xcb_flush(impl->connection);
+}
+
 
 /* ================================================================================ */
 /*  WINDOW FUNCTIONS                                                                */
@@ -150,10 +201,14 @@ void window_pump_messages(MaestroWindowHandler *h) {
 
     h->mouse_buttons = (MaestroMouseBits)(((h->mouse_buttons & 0x1Fu) << 5) | handler->held_mouse);
 
-    // In captured mode prev is always the center so DELTA reports displacement from center.
+    // In captured mode prev is always the center so DELTA reports the movement
+    // gathered during this pump. mouse_x starts at the center too; a stale
+    // value would otherwise repeat the previous delta on quiet frames.
     if(h->flags & MAESTRO_WINDOW_MOUSE_CAPTURED) {
         h->prev_mouse_x = (int32_t)(h->width  / 2);
         h->prev_mouse_y = (int32_t)(h->height / 2);
+        h->mouse_x = h->prev_mouse_x;
+        h->mouse_y = h->prev_mouse_y;
     } else {
         h->prev_mouse_x = h->mouse_x;
         h->prev_mouse_y = h->mouse_y;
@@ -177,13 +232,28 @@ void window_pump_messages(MaestroWindowHandler *h) {
                 }
             } break;
 
-            case XCB_FOCUS_IN:
+            case XCB_FOCUS_IN: {
+                xcb_focus_in_event_t *fi = (xcb_focus_in_event_t *)event;
+                // Window managers emit transient Grab/Ungrab focus events while
+                // cycling windows; only a real focus change matters here.
+                if(fi->mode == XCB_NOTIFY_MODE_GRAB || fi->mode == XCB_NOTIFY_MODE_UNGRAB)
+                    break;
                 h->flags |= MAESTRO_WINDOW_FOCUSED;
-                break;
+                // Capture is a persistent request; restore it when focus returns.
+                if(h->flags & MAESTRO_WINDOW_MOUSE_CAPTURED)
+                    linux_apply_mouse_capture(handler);
+            } break;
 
-            case XCB_FOCUS_OUT:
+            case XCB_FOCUS_OUT: {
+                xcb_focus_out_event_t *fo = (xcb_focus_out_event_t *)event;
+                if(fo->mode == XCB_NOTIFY_MODE_GRAB || fo->mode == XCB_NOTIFY_MODE_UNGRAB)
+                    break;
                 h->flags &= ~MAESTRO_WINDOW_FOCUSED;
-                break;
+                // Suspend capture on focus loss to avoid trapping the cursor.
+                // The CAPTURED flag stays set so FOCUS_IN can restore it.
+                if(h->flags & MAESTRO_WINDOW_MOUSE_CAPTURED)
+                    xcb_ungrab_pointer(handler->connection, XCB_CURRENT_TIME);
+            } break;
 
             case XCB_MAP_NOTIFY:
                 h->flags &= ~MAESTRO_WINDOW_MINIMIZED;
@@ -230,11 +300,38 @@ void window_pump_messages(MaestroWindowHandler *h) {
 
             case XCB_MOTION_NOTIFY: {
                 xcb_motion_notify_event_t *motion = (xcb_motion_notify_event_t *)event;
-                if(handler->warp_skip) {
-                    handler->warp_skip = 0;
-                } else {
+                // While captured with XInput2 available the raw events below
+                // drive mouse_x/y; absolute positions are unreliable there
+                // because XWayland honors center warps only selectively.
+                if(!(h->flags & MAESTRO_WINDOW_MOUSE_CAPTURED) || !handler->xi2_opcode) {
                     h->mouse_x = motion->event_x;
                     h->mouse_y = motion->event_y;
+                }
+            } break;
+
+            case XCB_GE_GENERIC: {
+                xcb_ge_generic_event_t *ge = (xcb_ge_generic_event_t *)event;
+                if(ge->extension != handler->xi2_opcode || ge->event_type != XCB_INPUT_RAW_MOTION)
+                    break;
+                if(!(h->flags & MAESTRO_WINDOW_MOUSE_CAPTURED) || !(h->flags & MAESTRO_WINDOW_FOCUSED))
+                    break;
+
+                // Raw motion: unaccelerated per-device deltas, delivered even
+                // when the compositor ignores warps or the pointer leaves the
+                // window. Axes 0 and 1 are x and y; higher axes are scroll.
+                xcb_input_raw_button_press_event_t *raw = (xcb_input_raw_button_press_event_t *)event;
+                uint32_t *mask                = xcb_input_raw_button_press_valuator_mask(raw);
+                xcb_input_fp3232_t *values    = xcb_input_raw_button_press_axisvalues_raw(raw);
+
+                uint32_t value_index = 0;
+                for(uint32_t axis = 0; axis < raw->valuators_len * 32u && axis <= 1; ++axis) {
+                    if(!(mask[axis / 32] & (1u << (axis % 32))))
+                        continue;
+                    double v = (double)values[value_index].integral +
+                               (double)values[value_index].frac / 4294967296.0;
+                    if(axis == 0) handler->raw_accum_x += v;
+                    else          handler->raw_accum_y += v;
+                    ++value_index;
                 }
             } break;
 
@@ -276,13 +373,24 @@ void window_pump_messages(MaestroWindowHandler *h) {
         free(event);
     }
 
-    // Warp to center once per pump when captured so the next pump's prev == center.
-    if(h->flags & MAESTRO_WINDOW_MOUSE_CAPTURED) {
+    // With XInput2, captured mouse_x/y come from the raw deltas: consume the
+    // integer part and carry the fraction over to the next pump. Then warp
+    // back to center; XWayland may ignore the warp for a visible cursor but
+    // the raw deltas keep the camera input correct either way. Skipped while
+    // unfocused, capture is suspended then.
+    if((h->flags & MAESTRO_WINDOW_MOUSE_CAPTURED) && (h->flags & MAESTRO_WINDOW_FOCUSED)) {
+        if(handler->xi2_opcode) {
+            int32_t dx = (int32_t)handler->raw_accum_x;
+            int32_t dy = (int32_t)handler->raw_accum_y;
+            handler->raw_accum_x -= dx;
+            handler->raw_accum_y -= dy;
+            h->mouse_x = h->prev_mouse_x + dx;
+            h->mouse_y = h->prev_mouse_y + dy;
+        }
         xcb_warp_pointer(handler->connection, XCB_NONE, handler->window,
             0, 0, 0, 0,
             (int16_t)(h->width  / 2),
             (int16_t)(h->height / 2));
-        handler->warp_skip = 1;
         xcb_flush(handler->connection);
     }
 }
@@ -291,29 +399,8 @@ void window_set_mouse_capture(MaestroWindowHandler *h, uint8_t captured) {
     MaestroWindowHandlerImpl *impl = (MaestroWindowHandlerImpl *)h;
 
     if(captured) {
-        if(impl->blank_cursor == XCB_CURSOR_NONE)
-            impl->blank_cursor = create_blank_cursor(impl);
-
-        // Grab and confine the pointer to the window. We pass blank_cursor here
-        // so the grabbed cursor is invisible; set_cursor_visible manages this
-        // independently, but the grab needs some cursor argument.
-        xcb_grab_pointer(impl->connection, 1, impl->window,
-            XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_BUTTON_RELEASE |
-            XCB_EVENT_MASK_POINTER_MOTION,
-            XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC,
-            impl->window,
-            (h->flags & MAESTRO_WINDOW_CURSOR_HIDDEN) ? impl->blank_cursor : XCB_CURSOR_NONE,
-            XCB_CURRENT_TIME);
-
-        // Warp to center immediately so the first pump's prev is already centered.
-        xcb_warp_pointer(impl->connection, XCB_NONE, impl->window,
-            0, 0, 0, 0,
-            (int16_t)(h->width  / 2),
-            (int16_t)(h->height / 2));
-        impl->warp_skip = 1;
-
+        linux_apply_mouse_capture(impl);
         h->flags |= MAESTRO_WINDOW_MOUSE_CAPTURED;
-        xcb_flush(impl->connection);
     } else {
         xcb_ungrab_pointer(impl->connection, XCB_CURRENT_TIME);
 
@@ -323,7 +410,6 @@ void window_set_mouse_capture(MaestroWindowHandler *h, uint8_t captured) {
             : XCB_CURSOR_NONE;
         xcb_change_window_attributes(impl->connection, impl->window, XCB_CW_CURSOR, &cursor);
 
-        impl->warp_skip = 0;
         h->flags &= ~MAESTRO_WINDOW_MOUSE_CAPTURED;
         xcb_flush(impl->connection);
     }
@@ -332,23 +418,19 @@ void window_set_mouse_capture(MaestroWindowHandler *h, uint8_t captured) {
 void window_set_cursor_visible(MaestroWindowHandler *h, uint8_t visible) {
     MaestroWindowHandlerImpl *impl = (MaestroWindowHandlerImpl *)h;
 
-    if(visible) {
-        h->flags &= ~MAESTRO_WINDOW_CURSOR_HIDDEN;
-        // Only change the window cursor attribute when not captured; the grab
-        // owns the cursor appearance while captured.
-        if(!(h->flags & MAESTRO_WINDOW_MOUSE_CAPTURED)) {
-            uint32_t cursor = XCB_CURSOR_NONE;
-            xcb_change_window_attributes(impl->connection, impl->window, XCB_CW_CURSOR, &cursor);
-        }
-    } else {
-        if(impl->blank_cursor == XCB_CURSOR_NONE)
-            impl->blank_cursor = create_blank_cursor(impl);
+    // The flag stores the visibility preference. While captured the cursor is
+    // always hidden by the grab; the preference is applied again on release.
+    if(visible) h->flags &= ~MAESTRO_WINDOW_CURSOR_HIDDEN;
+    else        h->flags |=  MAESTRO_WINDOW_CURSOR_HIDDEN;
 
-        h->flags |= MAESTRO_WINDOW_CURSOR_HIDDEN;
-        uint32_t cursor = impl->blank_cursor;
+    if(!visible && impl->blank_cursor == XCB_CURSOR_NONE)
+        impl->blank_cursor = create_blank_cursor(impl);
+
+    if(!(h->flags & MAESTRO_WINDOW_MOUSE_CAPTURED)) {
+        uint32_t cursor = visible ? XCB_CURSOR_NONE : impl->blank_cursor;
         xcb_change_window_attributes(impl->connection, impl->window, XCB_CW_CURSOR, &cursor);
+        xcb_flush(impl->connection);
     }
-    xcb_flush(impl->connection);
 }
 
 void window_set_title(MaestroWindowHandler *h, const char *title) {
@@ -534,8 +616,40 @@ HarpResult init_window(HarpCoreHandler *core_handler, HarpHandlerBase *base, Har
     xcb_map_window(handler->connection, handler->window);
     xcb_flush(handler->connection);
 
+    // XInput2 raw motion: subscribed on the root window for all master
+    // devices. Only consumed while captured and focused; without XInput2
+    // captured deltas fall back to absolute positions plus center warps.
+    handler->xi2_opcode  = 0;
+    handler->raw_accum_x = 0.0;
+    handler->raw_accum_y = 0.0;
+
+    const xcb_query_extension_reply_t *xi_ext =
+        xcb_get_extension_data(handler->connection, &xcb_input_id);
+    if(xi_ext && xi_ext->present) {
+        xcb_input_xi_query_version_reply_t *xi_version = xcb_input_xi_query_version_reply(
+            handler->connection,
+            xcb_input_xi_query_version(handler->connection, 2, 2),
+            NULL);
+        if(xi_version) {
+            if(xi_version->major_version >= 2) {
+                struct {
+                    xcb_input_event_mask_t head;
+                    uint32_t mask;
+                } mask = {
+                    .head = { .deviceid = XCB_INPUT_DEVICE_ALL_MASTER, .mask_len = 1 },
+                    .mask = XCB_INPUT_XI_EVENT_MASK_RAW_MOTION
+                };
+                xcb_input_xi_select_events(handler->connection, handler->screen->root, 1, &mask.head);
+                handler->xi2_opcode = xi_ext->major_opcode;
+            }
+            free(xi_version);
+        }
+    }
+    if(!handler->xi2_opcode)
+        MAESTRO_LOG_WARN(handler->logger, base->name,
+            "XInput2 unavailable, captured mouse deltas fall back to absolute positions");
+
     handler->blank_cursor           = XCB_CURSOR_NONE;
-    handler->warp_skip              = 0;
     handler->pub.width              = window_creator.width;
     handler->pub.height             = window_creator.height;
     handler->pub.flags              = MAESTRO_WINDOW_FOCUSED;

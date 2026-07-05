@@ -31,7 +31,6 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debug_messenger_callback(
     void *user_data
 ) {
     HARP_UNUSED(type);
-
     MaestroLoggerHandler *logger = (MaestroLoggerHandler *)user_data;
 
     if(severity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)
@@ -60,8 +59,82 @@ static void fill_debug_messenger_info(VkDebugUtilsMessengerCreateInfoEXT *info, 
 
 
 /* ================================================================================ */
-/*  DEFAULT SCORE                                                                   */
+/*  VULKAN CORE HANDLER                                                             */
 /* ================================================================================ */
+
+HarpResult vulkan_create_buffer(
+    MaestroVulkanDeviceActor *actor,
+    VkDeviceSize              size,
+    VkBufferUsageFlags        usage,
+    VkMemoryPropertyFlags     mem_props,
+    VkBuffer                 *out_buffer,
+    VkDeviceMemory           *out_memory
+) {
+    *out_buffer = VK_NULL_HANDLE;
+    *out_memory = VK_NULL_HANDLE;
+
+    VkBufferCreateInfo buf_info = {
+        .sType       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .size        = size,
+        .usage       = usage,
+        .sharingMode = VK_SHARING_MODE_EXCLUSIVE
+    };
+
+    if(vkCreateBuffer(actor->device, &buf_info, NULL, out_buffer) != VK_SUCCESS)
+        return HARP_RESULT_FAILED;
+
+    VkMemoryRequirements mem_req;
+    vkGetBufferMemoryRequirements(actor->device, *out_buffer, &mem_req);
+
+    VkPhysicalDeviceMemoryProperties mem_dev;
+    vkGetPhysicalDeviceMemoryProperties(actor->physical_device, &mem_dev);
+
+    uint32_t mem_type = UINT32_MAX;
+    for(uint32_t i = 0; i < mem_dev.memoryTypeCount; ++i) {
+        if((mem_req.memoryTypeBits & (1u << i)) &&
+           (mem_dev.memoryTypes[i].propertyFlags & mem_props) == mem_props) {
+            mem_type = i;
+            break;
+        }
+    }
+
+    if(mem_type == UINT32_MAX) {
+        vkDestroyBuffer(actor->device, *out_buffer, NULL);
+        *out_buffer = VK_NULL_HANDLE;
+        return HARP_RESULT_FAILED;
+    }
+
+    VkMemoryAllocateInfo alloc_info = {
+        .sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+        .allocationSize  = mem_req.size,
+        .memoryTypeIndex = mem_type
+    };
+
+    if(vkAllocateMemory(actor->device, &alloc_info, NULL, out_memory) != VK_SUCCESS) {
+        vkDestroyBuffer(actor->device, *out_buffer, NULL);
+        *out_buffer = VK_NULL_HANDLE;
+        return HARP_RESULT_FAILED;
+    }
+
+    if(vkBindBufferMemory(actor->device, *out_buffer, *out_memory, 0) != VK_SUCCESS) {
+        vkFreeMemory(actor->device, *out_memory, NULL);
+        vkDestroyBuffer(actor->device, *out_buffer, NULL);
+        *out_buffer = VK_NULL_HANDLE;
+        *out_memory = VK_NULL_HANDLE;
+        return HARP_RESULT_FAILED;
+    }
+
+    return HARP_RESULT_OK;
+}
+
+void vulkan_destroy_buffer(
+    MaestroVulkanDeviceActor *actor,
+    VkBuffer                  buffer,
+    VkDeviceMemory            memory
+) {
+    if(memory != VK_NULL_HANDLE) vkFreeMemory(actor->device, memory, NULL);
+    if(buffer != VK_NULL_HANDLE) vkDestroyBuffer(actor->device, buffer, NULL);
+}
 
 int32_t default_device_score(VkPhysicalDevice device) {
     VkPhysicalDeviceProperties props;
@@ -74,11 +147,6 @@ int32_t default_device_score(VkPhysicalDevice device) {
         default:                                      return 0;
     }
 }
-
-
-/* ================================================================================ */
-/*  VULKAN CORE HANDLER                                                             */
-/* ================================================================================ */
 
 HarpResult init_vulkan_instance(HarpCoreHandler *core_handler, HarpHandlerBase *base, HarpCreatorBase *creator_base) {
     MaestroVulkanCoreCreator creator = {
@@ -242,84 +310,6 @@ HarpResult term_vulkan_instance(HarpCoreHandler *core_handler, HarpHandlerBase *
     return HARP_RESULT_OK;
 }
 
-
-/* ================================================================================ */
-/*  BUFFER HELPERS                                                                  */
-/* ================================================================================ */
-
-HarpResult vulkan_create_buffer(
-    MaestroVulkanDeviceActor *actor,
-    VkDeviceSize              size,
-    VkBufferUsageFlags        usage,
-    VkMemoryPropertyFlags     mem_props,
-    VkBuffer                 *out_buffer,
-    VkDeviceMemory           *out_memory)
-{
-    *out_buffer = VK_NULL_HANDLE;
-    *out_memory = VK_NULL_HANDLE;
-
-    VkBufferCreateInfo buf_info = {
-        .sType       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-        .size        = size,
-        .usage       = usage,
-        .sharingMode = VK_SHARING_MODE_EXCLUSIVE
-    };
-
-    if(vkCreateBuffer(actor->device, &buf_info, NULL, out_buffer) != VK_SUCCESS)
-        return HARP_RESULT_FAILED;
-
-    VkMemoryRequirements mem_req;
-    vkGetBufferMemoryRequirements(actor->device, *out_buffer, &mem_req);
-
-    VkPhysicalDeviceMemoryProperties mem_dev;
-    vkGetPhysicalDeviceMemoryProperties(actor->physical_device, &mem_dev);
-
-    uint32_t mem_type = UINT32_MAX;
-    for(uint32_t i = 0; i < mem_dev.memoryTypeCount; ++i) {
-        if((mem_req.memoryTypeBits & (1u << i)) &&
-           (mem_dev.memoryTypes[i].propertyFlags & mem_props) == mem_props) {
-            mem_type = i;
-            break;
-        }
-    }
-
-    if(mem_type == UINT32_MAX) {
-        vkDestroyBuffer(actor->device, *out_buffer, NULL);
-        *out_buffer = VK_NULL_HANDLE;
-        return HARP_RESULT_FAILED;
-    }
-
-    VkMemoryAllocateInfo alloc_info = {
-        .sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-        .allocationSize  = mem_req.size,
-        .memoryTypeIndex = mem_type
-    };
-
-    if(vkAllocateMemory(actor->device, &alloc_info, NULL, out_memory) != VK_SUCCESS) {
-        vkDestroyBuffer(actor->device, *out_buffer, NULL);
-        *out_buffer = VK_NULL_HANDLE;
-        return HARP_RESULT_FAILED;
-    }
-
-    if(vkBindBufferMemory(actor->device, *out_buffer, *out_memory, 0) != VK_SUCCESS) {
-        vkFreeMemory(actor->device, *out_memory, NULL);
-        vkDestroyBuffer(actor->device, *out_buffer, NULL);
-        *out_buffer = VK_NULL_HANDLE;
-        *out_memory = VK_NULL_HANDLE;
-        return HARP_RESULT_FAILED;
-    }
-
-    return HARP_RESULT_OK;
-}
-
-void vulkan_destroy_buffer(
-    MaestroVulkanDeviceActor *actor,
-    VkBuffer                  buffer,
-    VkDeviceMemory            memory)
-{
-    if(memory != VK_NULL_HANDLE) vkFreeMemory(actor->device, memory, NULL);
-    if(buffer != VK_NULL_HANDLE) vkDestroyBuffer(actor->device, buffer, NULL);
-}
 
 
 /* ================================================================================ */
@@ -549,6 +539,326 @@ HarpResult destroy_vulkan_device(HarpCoreHandler *core_handler, HarpActorBase *b
     }
 
     impl->pub.queue_count = 0;
+
+    return HARP_RESULT_OK;
+}
+
+
+/* ================================================================================ */
+/*  SWAPCHAIN SELECTION                                                             */
+/* ================================================================================ */
+
+static VkSurfaceFormatKHR select_format_preferred(
+    VkPhysicalDevice physical_device,
+    VkSurfaceKHR surface,
+    VkFormat preferred)
+{
+    uint32_t count = 0;
+    vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &count, NULL);
+    VkSurfaceFormatKHR *formats = malloc(count * sizeof(VkSurfaceFormatKHR));
+    vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &count, formats);
+
+    VkSurfaceFormatKHR result = formats[0];
+    for(uint32_t i = 0; i < count; ++i) {
+        if(formats[i].format == preferred &&
+           formats[i].colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
+            result = formats[i];
+            break;
+        }
+    }
+    free(formats);
+    return result;
+}
+
+static VkPresentModeKHR select_present_mode_preferred(
+    VkPhysicalDevice physical_device,
+    VkSurfaceKHR surface,
+    VkPresentModeKHR preferred)
+{
+    uint32_t count = 0;
+    vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &count, NULL);
+    VkPresentModeKHR *modes = malloc(count * sizeof(VkPresentModeKHR));
+    vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &count, modes);
+
+    VkPresentModeKHR result = VK_PRESENT_MODE_FIFO_KHR;
+    for(uint32_t i = 0; i < count; ++i) {
+        if(modes[i] == preferred) { result = preferred; break; }
+    }
+    free(modes);
+    return result;
+}
+
+
+/* ================================================================================ */
+/*  VULKAN SWAPCHAIN HANDLER                                                        */
+/* ================================================================================ */
+
+/* Creates a new swapchain and image views, replacing any previous one.
+   Old resources are only destroyed after the new ones are fully ready. */
+static HarpResult swapchain_build(
+    MaestroVulkanSwapchainHandlerImpl *impl,
+    MaestroVulkanDeviceActor *device,
+    uint32_t width,
+    uint32_t height,
+    VkSurfaceFormatKHR format,
+    VkPresentModeKHR present_mode)
+{
+    VkSurfaceCapabilitiesKHR caps;
+    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device->physical_device, impl->surface, &caps);
+
+    uint32_t image_count = caps.minImageCount + 1;
+    if(caps.maxImageCount > 0 && image_count > caps.maxImageCount)
+        image_count = caps.maxImageCount;
+
+    VkExtent2D extent;
+    if(caps.currentExtent.width != UINT32_MAX) {
+        extent = caps.currentExtent;
+    } else {
+        extent.width  = width  < caps.minImageExtent.width  ? caps.minImageExtent.width  :
+                        width  > caps.maxImageExtent.width  ? caps.maxImageExtent.width  : width;
+        extent.height = height < caps.minImageExtent.height ? caps.minImageExtent.height :
+                        height > caps.maxImageExtent.height ? caps.maxImageExtent.height : height;
+    }
+
+    uint32_t graphics_family = UINT32_MAX;
+    uint32_t present_family  = UINT32_MAX;
+    for(uint32_t i = 0; i < device->queue_count; ++i) {
+        if((device->queues[i].flags & VK_QUEUE_GRAPHICS_BIT) && graphics_family == UINT32_MAX)
+            graphics_family = device->queues[i].family;
+        if(device->queues[i].supports_present && present_family == UINT32_MAX)
+            present_family = device->queues[i].family;
+    }
+
+    uint32_t queue_indices[2] = { graphics_family, present_family };
+    uint8_t exclusive = (graphics_family == present_family);
+
+    VkSwapchainCreateInfoKHR create_info = {
+        .sType                 = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
+        .surface               = impl->surface,
+        .minImageCount         = image_count,
+        .imageFormat           = format.format,
+        .imageColorSpace       = format.colorSpace,
+        .imageExtent           = extent,
+        .imageArrayLayers      = 1,
+        .imageUsage            = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+        .imageSharingMode      = exclusive ? VK_SHARING_MODE_EXCLUSIVE : VK_SHARING_MODE_CONCURRENT,
+        .queueFamilyIndexCount = exclusive ? 0 : 2,
+        .pQueueFamilyIndices   = exclusive ? NULL : queue_indices,
+        .preTransform          = caps.currentTransform,
+        .compositeAlpha        = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
+        .presentMode           = present_mode,
+        .clipped               = VK_TRUE,
+        .oldSwapchain          = impl->pub.swapchain
+    };
+
+    VkSwapchainKHR new_swapchain = VK_NULL_HANDLE;
+    if(vkCreateSwapchainKHR(device->device, &create_info, NULL, &new_swapchain) != VK_SUCCESS)
+        return HARP_RESULT_FAILED;
+
+    uint32_t new_count = 0;
+    vkGetSwapchainImagesKHR(device->device, new_swapchain, &new_count, NULL);
+
+    VkImage *new_images = malloc(new_count * sizeof(VkImage));
+    if(!new_images) {
+        vkDestroySwapchainKHR(device->device, new_swapchain, NULL);
+        return HARP_RESULT_OUT_OF_MEMORY;
+    }
+    vkGetSwapchainImagesKHR(device->device, new_swapchain, &new_count, new_images);
+
+    VkImageView *new_views = malloc(new_count * sizeof(VkImageView));
+    if(!new_views) {
+        free(new_images);
+        vkDestroySwapchainKHR(device->device, new_swapchain, NULL);
+        return HARP_RESULT_OUT_OF_MEMORY;
+    }
+
+    for(uint32_t i = 0; i < new_count; ++i) {
+        VkImageViewCreateInfo view_info = {
+            .sType    = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+            .image    = new_images[i],
+            .viewType = VK_IMAGE_VIEW_TYPE_2D,
+            .format   = format.format,
+            .components = {
+                .r = VK_COMPONENT_SWIZZLE_IDENTITY,
+                .g = VK_COMPONENT_SWIZZLE_IDENTITY,
+                .b = VK_COMPONENT_SWIZZLE_IDENTITY,
+                .a = VK_COMPONENT_SWIZZLE_IDENTITY
+            },
+            .subresourceRange = {
+                .aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
+                .baseMipLevel   = 0,
+                .levelCount     = 1,
+                .baseArrayLayer = 0,
+                .layerCount     = 1
+            }
+        };
+        if(vkCreateImageView(device->device, &view_info, NULL, &new_views[i]) != VK_SUCCESS) {
+            for(uint32_t j = 0; j < i; ++j)
+                vkDestroyImageView(device->device, new_views[j], NULL);
+            free(new_views);
+            free(new_images);
+            vkDestroySwapchainKHR(device->device, new_swapchain, NULL);
+            return HARP_RESULT_FAILED;
+        }
+    }
+
+    /* New resources ready, destroy old ones. */
+    for(uint32_t i = 0; i < impl->pub.image_count; ++i)
+        vkDestroyImageView(device->device, impl->pub.views[i], NULL);
+    free(impl->pub.views);
+    free(impl->pub.images);
+    if(impl->pub.swapchain != VK_NULL_HANDLE)
+        vkDestroySwapchainKHR(device->device, impl->pub.swapchain, NULL);
+
+    impl->pub.swapchain    = new_swapchain;
+    impl->pub.images       = new_images;
+    impl->pub.views        = new_views;
+    impl->pub.image_count  = new_count;
+    impl->pub.format       = format.format;
+    impl->pub.color_space  = format.colorSpace;
+    impl->pub.extent       = extent;
+    impl->pub.present_mode = present_mode;
+
+    return HARP_RESULT_OK;
+}
+
+HarpResult swapchain_acquire(
+    MaestroVulkanSwapchainHandler *h,
+    VkSemaphore signal_semaphore,
+    uint32_t *out_image_index)
+{
+    HARP_CHECK_STATE(HARP_HANDLER_IS_VALID(h), HARP_RESULT_INVALID_STATE);
+    MaestroVulkanSwapchainHandlerImpl *impl = (MaestroVulkanSwapchainHandlerImpl *)h;
+    VkResult res = vkAcquireNextImageKHR(
+        impl->device, h->swapchain, UINT64_MAX,
+        signal_semaphore, VK_NULL_HANDLE, out_image_index);
+
+    if(res == VK_ERROR_OUT_OF_DATE_KHR)
+        return HARP_RESULT_FAILED;
+    if(res != VK_SUCCESS && res != VK_SUBOPTIMAL_KHR)
+        return HARP_RESULT_FAILED;
+    return HARP_RESULT_OK;
+}
+
+HarpResult swapchain_present(
+    MaestroVulkanSwapchainHandler *h,
+    VkQueue queue,
+    VkSemaphore wait_semaphore,
+    uint32_t image_index)
+{
+    HARP_CHECK_STATE(HARP_HANDLER_IS_VALID(h), HARP_RESULT_INVALID_STATE);
+    VkPresentInfoKHR info = {
+        .sType              = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+        .waitSemaphoreCount = wait_semaphore != VK_NULL_HANDLE ? 1 : 0,
+        .pWaitSemaphores    = wait_semaphore != VK_NULL_HANDLE ? &wait_semaphore : NULL,
+        .swapchainCount     = 1,
+        .pSwapchains        = &h->swapchain,
+        .pImageIndices      = &image_index,
+        .pResults           = NULL
+    };
+    VkResult res = vkQueuePresentKHR(queue, &info);
+
+    if(res == VK_ERROR_OUT_OF_DATE_KHR || res == VK_SUBOPTIMAL_KHR)
+        return HARP_RESULT_FAILED;
+    if(res != VK_SUCCESS)
+        return HARP_RESULT_FAILED;
+    return HARP_RESULT_OK;
+}
+
+HarpResult swapchain_recreate(
+    MaestroVulkanSwapchainHandler *h,
+    MaestroVulkanDeviceActor *device,
+    uint32_t width,
+    uint32_t height,
+    VkPresentModeKHR present_mode)
+{
+    HARP_CHECK_STATE(HARP_HANDLER_IS_VALID(h), HARP_RESULT_INVALID_STATE);
+    MaestroVulkanSwapchainHandlerImpl *impl = (MaestroVulkanSwapchainHandlerImpl *)h;
+
+    vkDeviceWaitIdle(device->device);
+
+    /* Validate requested present mode is still supported; fall back to FIFO. */
+    uint32_t mode_count = 0;
+    vkGetPhysicalDeviceSurfacePresentModesKHR(device->physical_device, impl->surface, &mode_count, NULL);
+    VkPresentModeKHR *modes = malloc(mode_count * sizeof(VkPresentModeKHR));
+    vkGetPhysicalDeviceSurfacePresentModesKHR(device->physical_device, impl->surface, &mode_count, modes);
+
+    VkPresentModeKHR chosen = VK_PRESENT_MODE_FIFO_KHR;
+    for(uint32_t i = 0; i < mode_count; ++i) {
+        if(modes[i] == present_mode) { chosen = present_mode; break; }
+    }
+    free(modes);
+
+    VkSurfaceFormatKHR format = { h->format, h->color_space };
+    return swapchain_build(impl, device, width, height, format, chosen);
+}
+
+HarpResult init_vulkan_swapchain(HarpCoreHandler *core_handler, HarpHandlerBase *base, HarpCreatorBase *creator_base)
+{
+    MaestroVulkanSwapchainHandlerImpl *impl = (MaestroVulkanSwapchainHandlerImpl *)base;
+
+    impl->pub.swapchain   = VK_NULL_HANDLE;
+    impl->pub.images      = NULL;
+    impl->pub.views       = NULL;
+    impl->pub.image_count = 0;
+    impl->surface         = VK_NULL_HANDLE;
+    impl->device          = VK_NULL_HANDLE;
+    impl->physical_device = VK_NULL_HANDLE;
+    impl->logger          = NULL;
+
+    if(creator_base->flags & HARP_CREATOR_FLAG_DEFAULT_CREATOR)
+        return HARP_RESULT_FAILED;
+
+    HarpHandlerBase *logger_base = NULL;
+    HarpResult res = core_handler->get_handler(
+        core_handler,
+        &HARP_DEPENDENCY(MAESTRO_LOGGER_HANDLER_NAME, 0, UINT32_MAX),
+        &logger_base);
+    if(res != HARP_RESULT_OK)
+        return res;
+    impl->logger = (MaestroLoggerHandler *)logger_base;
+
+    MaestroVulkanSwapchainCreator *creator = (MaestroVulkanSwapchainCreator *)creator_base;
+    MaestroVulkanDeviceActor *device = creator->device;
+    VkSurfaceKHR surface             = creator->surface;
+    uint32_t width                   = creator->width;
+    uint32_t height                  = creator->height;
+    VkSurfaceFormatKHR format        = select_format_preferred(device->physical_device, surface, creator->preferred_format);
+    VkPresentModeKHR present_mode    = select_present_mode_preferred(device->physical_device, surface, creator->preferred_present_mode);
+
+    impl->surface         = surface;
+    impl->device          = device->device;
+    impl->physical_device = device->physical_device;
+
+    res = swapchain_build(impl, device, width, height, format, present_mode);
+    if(res != HARP_RESULT_OK)
+        return res;
+
+    MAESTRO_LOGF_INFO(impl->logger, base->name,
+        "swapchain created: %ux%u  fmt=%u  mode=%u  images=%u",
+        impl->pub.extent.width, impl->pub.extent.height,
+        impl->pub.format, impl->pub.present_mode, impl->pub.image_count);
+
+    return HARP_RESULT_OK;
+}
+HarpResult term_vulkan_swapchain(HarpCoreHandler *core_handler, HarpHandlerBase *base)
+{
+    HARP_UNUSED(core_handler);
+    MaestroVulkanSwapchainHandlerImpl *impl = (MaestroVulkanSwapchainHandlerImpl *)base;
+
+    for(uint32_t i = 0; i < impl->pub.image_count; ++i)
+        vkDestroyImageView(impl->device, impl->pub.views[i], NULL);
+
+    free(impl->pub.views);
+    free(impl->pub.images);
+    impl->pub.views       = NULL;
+    impl->pub.images      = NULL;
+    impl->pub.image_count = 0;
+
+    if(impl->pub.swapchain != VK_NULL_HANDLE) {
+        vkDestroySwapchainKHR(impl->device, impl->pub.swapchain, NULL);
+        impl->pub.swapchain = VK_NULL_HANDLE;
+    }
 
     return HARP_RESULT_OK;
 }

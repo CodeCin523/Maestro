@@ -20,6 +20,14 @@ typedef struct MaestroVulkanDeviceActorImpl {
     MaestroLoggerHandler *logger;
 } MaestroVulkanDeviceActorImpl;
 
+typedef struct MaestroVulkanSwapchainHandlerImpl {
+    MaestroVulkanSwapchainHandler pub;
+    MaestroLoggerHandler *logger;
+    VkDevice device;
+    VkPhysicalDevice physical_device;
+    VkSurfaceKHR surface;
+} MaestroVulkanSwapchainHandlerImpl;
+
 
 int32_t default_device_score(VkPhysicalDevice device);
 
@@ -33,6 +41,14 @@ HarpResult term_vulkan_instance(HarpCoreHandler *core_handler, HarpHandlerBase *
 
 HarpResult create_vulkan_device(HarpCoreHandler *core_handler, HarpActorBase *base, HarpCreatorBase *creator);
 HarpResult destroy_vulkan_device(HarpCoreHandler *core_handler, HarpActorBase *base);
+
+
+HarpResult swapchain_acquire(MaestroVulkanSwapchainHandler *h, VkSemaphore signal_semaphore, uint32_t *out_image_index);
+HarpResult swapchain_present(MaestroVulkanSwapchainHandler *h, VkQueue queue, VkSemaphore wait_semaphore, uint32_t image_index);
+HarpResult swapchain_recreate(MaestroVulkanSwapchainHandler *h, MaestroVulkanDeviceActor *device, uint32_t width, uint32_t height, VkPresentModeKHR present_mode);
+
+HarpResult init_vulkan_swapchain(HarpCoreHandler *core_handler, HarpHandlerBase *base, HarpCreatorBase *creator);
+HarpResult term_vulkan_swapchain(HarpCoreHandler *core_handler, HarpHandlerBase *base);
 
 
 #endif /* IMPL_MAESTRO_VULKAN_H */

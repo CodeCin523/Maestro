@@ -109,3 +109,26 @@ add_test(
     COMMAND test_maestro_surface
 )
 
+
+add_executable(
+    test_maestro_swapchain
+    test_swapchain.c
+)
+
+target_link_libraries(
+    test_maestro_swapchain PRIVATE
+    HARP::Harp
+    Maestro
+    Vulkan::Vulkan
+)
+
+target_include_directories(
+    test_maestro_swapchain PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
+)
+
+add_test(
+    NAME test_maestro_swapchain
+    COMMAND test_maestro_swapchain
+)
+

@@ -21,6 +21,9 @@ typedef struct MaestroVulkanCoreHandler MaestroVulkanCoreHandler;
 typedef struct MaestroVulkanDeviceCreator MaestroVulkanDeviceCreator;
 typedef struct MaestroVulkanDeviceActor MaestroVulkanDeviceActor;
 
+typedef struct MaestroVulkanSwapchainCreator MaestroVulkanSwapchainCreator;
+typedef struct MaestroVulkanSwapchainHandler MaestroVulkanSwapchainHandler;
+
 typedef int32_t (*MaestroVulkanDeviceScorePfn)(VkPhysicalDevice);
 
 #define MAESTRO_VULKAN_MAX_QUEUES 8
@@ -101,6 +104,49 @@ struct MaestroVulkanDeviceActor {
        Iterate to find the queue that matches your needs via flags / supports_present. */
     MaestroVulkanQueue queues[MAESTRO_VULKAN_MAX_QUEUES];
     uint32_t queue_count;
+};
+
+
+/* ================================================================================ */
+/*  SWAPCHAIN HANDLER                                                               */
+/* ================================================================================ */
+
+#define MAESTRO_VULKAN_SWAPCHAIN_HANDLER_NAME "MaestroVulkanSwapchainHandler"
+#define MAESTRO_VULKAN_SWAPCHAIN_HANDLER_VERSION HARP_MAKE_VERSION(1,0,0)
+
+struct MaestroVulkanSwapchainCreator {
+    HarpCreatorBase _base;
+
+    MaestroVulkanDeviceActor *device;
+    VkSurfaceKHR surface;
+    uint32_t width;
+    uint32_t height;
+
+    VkFormat preferred_format;               /* falls back to first available */
+    VkPresentModeKHR preferred_present_mode; /* falls back to FIFO            */
+};
+
+struct MaestroVulkanSwapchainHandler {
+    HarpHandlerBase _base;
+
+    /* signal_semaphore is signalled when the image is ready to render into.
+       Returns HARP_RESULT_FAILED if the swapchain is out of date, call recreate. */
+    HarpResult (*acquire)(MaestroVulkanSwapchainHandler *h, VkSemaphore signal_semaphore, uint32_t *out_image_index);
+    /* wait_semaphore is waited on before presenting (render-finished semaphore).
+       Returns HARP_RESULT_FAILED if the swapchain is out of date, call recreate. */
+    HarpResult (*present)(MaestroVulkanSwapchainHandler *h, VkQueue queue, VkSemaphore wait_semaphore, uint32_t image_index);
+    /* Call on window resize or after acquire/present returns HARP_RESULT_FAILED. */
+    HarpResult (*recreate)(MaestroVulkanSwapchainHandler *h, MaestroVulkanDeviceActor *device, uint32_t width, uint32_t height, VkPresentModeKHR present_mode);
+
+    VkSwapchainKHR swapchain;
+    VkFormat format;
+    VkColorSpaceKHR color_space;
+    VkExtent2D extent;
+    VkPresentModeKHR present_mode;
+
+    VkImage *images;
+    VkImageView *views;
+    uint32_t image_count;
 };
 
 

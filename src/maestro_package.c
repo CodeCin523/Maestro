@@ -21,6 +21,7 @@ const char * const maestro_name_logger            = MAESTRO_LOGGER_HANDLER_NAME;
 const char * const maestro_name_window            = MAESTRO_WINDOW_HANDLER_NAME;
 const char * const maestro_name_vulkan_core       = MAESTRO_VULKAN_CORE_HANDLER_NAME;
 const char * const maestro_name_vulkan_device     = MAESTRO_VULKAN_DEVICE_ACTOR_NAME;
+const char * const maestro_name_vulkan_swapchain  = MAESTRO_VULKAN_SWAPCHAIN_HANDLER_NAME;
 
 
 /* ================================================================================ */
@@ -133,6 +134,35 @@ HarpResult maestro_register(HarpCoreHandler *core) {
     res = core->register_actor(core, &actor_desc);
     if(res != HARP_RESULT_OK)
         return res;
+
+    // VULKAN_SWAPCHAIN_HANDLER
+    HarpDependencyDesc swapchain_deps[] = {
+        {maestro_name_window,      0, UINT32_MAX},
+        {maestro_name_vulkan_core, 0, UINT32_MAX}
+    };
+
+    handler_desc = (HarpHandlerDesc) {
+        .name               = maestro_name_vulkan_swapchain,
+        .version            = MAESTRO_VULKAN_SWAPCHAIN_HANDLER_VERSION,
+        .instance_size      = sizeof(MaestroVulkanSwapchainHandlerImpl),
+        .instance_alignment = alignof(MaestroVulkanSwapchainHandlerImpl),
+        .pfn_init           = init_vulkan_swapchain,
+        .pfn_term           = term_vulkan_swapchain,
+        .p_dependencies     = swapchain_deps,
+        .dependency_count   = 2
+    };
+
+    res = core->register_handler(core, &handler_desc, &handler_base);
+    if(res != HARP_RESULT_OK)
+        return res;
+
+    MaestroVulkanSwapchainHandler *swapchain = HARP_HANDLER_AS(MaestroVulkanSwapchainHandler, handler_base);
+
+    swapchain->acquire  = swapchain_acquire;
+    swapchain->present  = swapchain_present;
+    swapchain->recreate = swapchain_recreate;
+
+    core->handler_set_serving(core, handler_base, 1);
 
     return HARP_RESULT_OK;
 }

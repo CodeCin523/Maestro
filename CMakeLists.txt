@@ -13,6 +13,12 @@ cmake_minimum_required(VERSION 3.17)
 
   option(MAESTRO_BUILD_TESTS "Build MAESTRO tests" OFF)
 
+  configure_file(
+    cmake/templates/maestro.h.in
+    ${CMAKE_CURRENT_LIST_DIR}/include/maestro/maestro.h
+    @ONLY
+  )
+
   # ------------------------------------------------------------------------------
   # Dependencies
   # ------------------------------------------------------------------------------

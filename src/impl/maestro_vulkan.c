@@ -632,6 +632,31 @@ static HarpResult swapchain_build(
     uint32_t queue_indices[2] = { graphics_family, present_family };
     uint8_t exclusive = (graphics_family == present_family);
 
+    VkImageUsageFlags usage = impl->requested_usage
+        ? impl->requested_usage
+        : VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    if((usage & caps.supportedUsageFlags) != usage) {
+        MAESTRO_LOGF_ERROR(impl->logger, impl->pub._base.name,
+            "unsupported swapchain image usage: requested=0x%x supported=0x%x",
+            usage, caps.supportedUsageFlags);
+        return HARP_RESULT_INVALID_ARGUMENTS;
+    }
+
+    /* The spec only guarantees that some composite alpha bit is supported. */
+    static const VkCompositeAlphaFlagBitsKHR alpha_preference[] = {
+        VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
+        VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR,
+        VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR,
+        VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR
+    };
+    VkCompositeAlphaFlagBitsKHR composite_alpha = alpha_preference[0];
+    for(uint32_t i = 0; i < sizeof(alpha_preference) / sizeof(alpha_preference[0]); ++i) {
+        if(caps.supportedCompositeAlpha & alpha_preference[i]) {
+            composite_alpha = alpha_preference[i];
+            break;
+        }
+    }
+
     VkSwapchainCreateInfoKHR create_info = {
         .sType                 = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
         .surface               = impl->surface,
@@ -640,12 +665,12 @@ static HarpResult swapchain_build(
         .imageColorSpace       = format.colorSpace,
         .imageExtent           = extent,
         .imageArrayLayers      = 1,
-        .imageUsage            = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+        .imageUsage            = usage,
         .imageSharingMode      = exclusive ? VK_SHARING_MODE_EXCLUSIVE : VK_SHARING_MODE_CONCURRENT,
         .queueFamilyIndexCount = exclusive ? 0 : 2,
         .pQueueFamilyIndices   = exclusive ? NULL : queue_indices,
         .preTransform          = caps.currentTransform,
-        .compositeAlpha        = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
+        .compositeAlpha        = composite_alpha,
         .presentMode           = present_mode,
         .clipped               = VK_TRUE,
         .oldSwapchain          = impl->pub.swapchain
@@ -710,14 +735,16 @@ static HarpResult swapchain_build(
     if(impl->pub.swapchain != VK_NULL_HANDLE)
         vkDestroySwapchainKHR(device->device, impl->pub.swapchain, NULL);
 
-    impl->pub.swapchain    = new_swapchain;
-    impl->pub.images       = new_images;
-    impl->pub.views        = new_views;
-    impl->pub.image_count  = new_count;
-    impl->pub.format       = format.format;
-    impl->pub.color_space  = format.colorSpace;
-    impl->pub.extent       = extent;
-    impl->pub.present_mode = present_mode;
+    impl->pub.swapchain       = new_swapchain;
+    impl->pub.images          = new_images;
+    impl->pub.views           = new_views;
+    impl->pub.image_count     = new_count;
+    impl->pub.format          = format.format;
+    impl->pub.color_space     = format.colorSpace;
+    impl->pub.extent          = extent;
+    impl->pub.present_mode    = present_mode;
+    impl->pub.usage           = usage;
+    impl->pub.composite_alpha = composite_alpha;
 
     return HARP_RESULT_OK;
 }
@@ -725,18 +752,28 @@ static HarpResult swapchain_build(
 HarpResult swapchain_acquire(
     MaestroVulkanSwapchainHandler *h,
     VkSemaphore signal_semaphore,
-    uint32_t *out_image_index)
+    uint32_t *out_image_index,
+    uint8_t *out_suboptimal)
 {
     HARP_CHECK_STATE(HARP_HANDLER_IS_VALID(h), HARP_RESULT_INVALID_STATE);
     MaestroVulkanSwapchainHandlerImpl *impl = (MaestroVulkanSwapchainHandlerImpl *)h;
+
+    if(out_suboptimal)
+        *out_suboptimal = 0;
+
     VkResult res = vkAcquireNextImageKHR(
         impl->device, h->swapchain, UINT64_MAX,
         signal_semaphore, VK_NULL_HANDLE, out_image_index);
 
+    if(res == VK_SUBOPTIMAL_KHR) {
+        if(out_suboptimal)
+            *out_suboptimal = 1;
+        return HARP_RESULT_OK;
+    }
     if(res == VK_ERROR_OUT_OF_DATE_KHR)
         return HARP_RESULT_FAILED;
-    if(res != VK_SUCCESS && res != VK_SUBOPTIMAL_KHR)
-        return HARP_RESULT_FAILED;
+    if(res != VK_SUCCESS)
+        return HARP_RESULT_CRITICAL_FAIL;
     return HARP_RESULT_OK;
 }
 
@@ -744,9 +781,14 @@ HarpResult swapchain_present(
     MaestroVulkanSwapchainHandler *h,
     VkQueue queue,
     VkSemaphore wait_semaphore,
-    uint32_t image_index)
+    uint32_t image_index,
+    uint8_t *out_suboptimal)
 {
     HARP_CHECK_STATE(HARP_HANDLER_IS_VALID(h), HARP_RESULT_INVALID_STATE);
+
+    if(out_suboptimal)
+        *out_suboptimal = 0;
+
     VkPresentInfoKHR info = {
         .sType              = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
         .waitSemaphoreCount = wait_semaphore != VK_NULL_HANDLE ? 1 : 0,
@@ -758,10 +800,16 @@ HarpResult swapchain_present(
     };
     VkResult res = vkQueuePresentKHR(queue, &info);
 
-    if(res == VK_ERROR_OUT_OF_DATE_KHR || res == VK_SUBOPTIMAL_KHR)
+    /* VK_SUBOPTIMAL_KHR is a success code: the image was presented. */
+    if(res == VK_SUBOPTIMAL_KHR) {
+        if(out_suboptimal)
+            *out_suboptimal = 1;
+        return HARP_RESULT_OK;
+    }
+    if(res == VK_ERROR_OUT_OF_DATE_KHR)
         return HARP_RESULT_FAILED;
     if(res != VK_SUCCESS)
-        return HARP_RESULT_FAILED;
+        return HARP_RESULT_CRITICAL_FAIL;
     return HARP_RESULT_OK;
 }
 
@@ -805,6 +853,7 @@ HarpResult init_vulkan_swapchain(HarpCoreHandler *core_handler, HarpHandlerBase 
     impl->device          = VK_NULL_HANDLE;
     impl->physical_device = VK_NULL_HANDLE;
     impl->logger          = NULL;
+    impl->requested_usage = 0;
 
     if(creator_base->flags & HARP_CREATOR_FLAG_DEFAULT_CREATOR)
         return HARP_RESULT_FAILED;
@@ -829,15 +878,17 @@ HarpResult init_vulkan_swapchain(HarpCoreHandler *core_handler, HarpHandlerBase 
     impl->surface         = surface;
     impl->device          = device->device;
     impl->physical_device = device->physical_device;
+    impl->requested_usage = creator->image_usage;
 
     res = swapchain_build(impl, device, width, height, format, present_mode);
     if(res != HARP_RESULT_OK)
         return res;
 
     MAESTRO_LOGF_INFO(impl->logger, base->name,
-        "swapchain created: %ux%u  fmt=%u  mode=%u  images=%u",
+        "swapchain created: %ux%u  fmt=%u  mode=%u  images=%u  usage=0x%x  alpha=0x%x",
         impl->pub.extent.width, impl->pub.extent.height,
-        impl->pub.format, impl->pub.present_mode, impl->pub.image_count);
+        impl->pub.format, impl->pub.present_mode, impl->pub.image_count,
+        impl->pub.usage, impl->pub.composite_alpha);
 
     return HARP_RESULT_OK;
 }

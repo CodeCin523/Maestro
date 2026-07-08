@@ -112,7 +112,7 @@ struct MaestroVulkanDeviceActor {
 /* ================================================================================ */
 
 #define MAESTRO_VULKAN_SWAPCHAIN_HANDLER_NAME "MaestroVulkanSwapchainHandler"
-#define MAESTRO_VULKAN_SWAPCHAIN_HANDLER_VERSION HARP_MAKE_VERSION(1,0,0)
+#define MAESTRO_VULKAN_SWAPCHAIN_HANDLER_VERSION HARP_MAKE_VERSION(2,0,0)
 
 struct MaestroVulkanSwapchainCreator {
     HarpCreatorBase _base;
@@ -124,18 +124,31 @@ struct MaestroVulkanSwapchainCreator {
 
     VkFormat preferred_format;               /* falls back to first available */
     VkPresentModeKHR preferred_present_mode; /* falls back to FIFO            */
+
+    /* 0 = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT. Init fails with
+       HARP_RESULT_INVALID_ARGUMENTS if the surface does not support
+       every requested bit; the granted value is published as `usage`. */
+    VkImageUsageFlags image_usage;
 };
 
+/* acquire/present result contract:
+     HARP_RESULT_OK            proceed; if *out_suboptimal was set to 1 the
+                               swapchain still works but should be recreated
+                               when convenient (e.g. end of frame)
+     HARP_RESULT_FAILED        swapchain is out of date, no image was
+                               acquired / presented, recreate and retry
+     HARP_RESULT_CRITICAL_FAIL unrecoverable (e.g. device lost), do not retry */
 struct MaestroVulkanSwapchainHandler {
     HarpHandlerBase _base;
 
     /* signal_semaphore is signalled when the image is ready to render into.
-       Returns HARP_RESULT_FAILED if the swapchain is out of date, call recreate. */
-    HarpResult (*acquire)(MaestroVulkanSwapchainHandler *h, VkSemaphore signal_semaphore, uint32_t *out_image_index);
+       out_suboptimal may be NULL if the caller does not care. */
+    HarpResult (*acquire)(MaestroVulkanSwapchainHandler *h, VkSemaphore signal_semaphore, uint32_t *out_image_index, uint8_t *out_suboptimal);
     /* wait_semaphore is waited on before presenting (render-finished semaphore).
-       Returns HARP_RESULT_FAILED if the swapchain is out of date, call recreate. */
-    HarpResult (*present)(MaestroVulkanSwapchainHandler *h, VkQueue queue, VkSemaphore wait_semaphore, uint32_t image_index);
-    /* Call on window resize or after acquire/present returns HARP_RESULT_FAILED. */
+       out_suboptimal may be NULL if the caller does not care. */
+    HarpResult (*present)(MaestroVulkanSwapchainHandler *h, VkQueue queue, VkSemaphore wait_semaphore, uint32_t image_index, uint8_t *out_suboptimal);
+    /* Call on window resize, after acquire/present returns HARP_RESULT_FAILED,
+       or at a convenient point after one of them reported suboptimal. */
     HarpResult (*recreate)(MaestroVulkanSwapchainHandler *h, MaestroVulkanDeviceActor *device, uint32_t width, uint32_t height, VkPresentModeKHR present_mode);
 
     VkSwapchainKHR swapchain;
@@ -143,6 +156,8 @@ struct MaestroVulkanSwapchainHandler {
     VkColorSpaceKHR color_space;
     VkExtent2D extent;
     VkPresentModeKHR present_mode;
+    VkImageUsageFlags usage;
+    VkCompositeAlphaFlagBitsKHR composite_alpha;
 
     VkImage *images;
     VkImageView *views;

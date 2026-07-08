@@ -256,8 +256,8 @@ static void test_swapchain_get_handler(void) {
 
     /* Calls on an uninitialized handler must fail cleanly. */
     uint32_t image_index = 0;
-    assert(g_swapchain->acquire(g_swapchain, VK_NULL_HANDLE, &image_index) == HARP_RESULT_INVALID_STATE);
-    assert(g_swapchain->present(g_swapchain, VK_NULL_HANDLE, VK_NULL_HANDLE, 0) == HARP_RESULT_INVALID_STATE);
+    assert(g_swapchain->acquire(g_swapchain, VK_NULL_HANDLE, &image_index, NULL) == HARP_RESULT_INVALID_STATE);
+    assert(g_swapchain->present(g_swapchain, VK_NULL_HANDLE, VK_NULL_HANDLE, 0, NULL) == HARP_RESULT_INVALID_STATE);
     assert(g_swapchain->recreate(g_swapchain, NULL, 0, 0, VK_PRESENT_MODE_FIFO_KHR) == HARP_RESULT_INVALID_STATE);
 
     TEST_MARKER("SWAPCHAIN", "GET_HANDLER_DONE");
@@ -301,7 +301,8 @@ static void test_swapchain_init(void) {
         .width                  = 1280,
         .height                 = 720,
         .preferred_format       = VK_FORMAT_B8G8R8A8_SRGB,
-        .preferred_present_mode = VK_PRESENT_MODE_MAILBOX_KHR
+        .preferred_present_mode = VK_PRESENT_MODE_MAILBOX_KHR,
+        .image_usage            = 0
     };
 
     assert_harp(
@@ -332,6 +333,11 @@ static void test_swapchain_init(void) {
     /* Preferred mode or the guaranteed FIFO fallback. */
     assert(g_swapchain->present_mode == VK_PRESENT_MODE_MAILBOX_KHR ||
            g_swapchain->present_mode == VK_PRESENT_MODE_FIFO_KHR);
+
+    /* image_usage 0 defaults to color attachment; composite alpha is
+       chosen from the surface capabilities and must be published. */
+    assert(g_swapchain->usage == VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
+    assert(g_swapchain->composite_alpha != 0);
 
     MaestroVulkanSwapchainHandlerImpl *impl = HARP_HANDLER_AS(MaestroVulkanSwapchainHandlerImpl, base);
     assert(impl->device          == actor->device);
@@ -405,10 +411,12 @@ static void test_swapchain_frame(const char *phase) {
     assert(present_queue != VK_NULL_HANDLE);
 
     uint32_t image_index = UINT32_MAX;
+    uint8_t  suboptimal  = 0;
     assert_harp(
-        g_swapchain->acquire(g_swapchain, g_sem_acquire, &image_index),
+        g_swapchain->acquire(g_swapchain, g_sem_acquire, &image_index, &suboptimal),
         "acquire swapchain image"
     );
+    if(suboptimal) printf("    acquire reported suboptimal\n");
     assert(image_index < g_swapchain->image_count);
     printf("    acquired image %u / %u\n", image_index, g_swapchain->image_count);
 
@@ -464,9 +472,10 @@ static void test_swapchain_frame(const char *phase) {
     assert_vk(vkQueueSubmit(actor->queues[0].queue, 1, &submit_info, g_fence), "submit transition");
 
     assert_harp(
-        g_swapchain->present(g_swapchain, present_queue, g_sem_render, image_index),
+        g_swapchain->present(g_swapchain, present_queue, g_sem_render, image_index, &suboptimal),
         "present swapchain image"
     );
+    if(suboptimal) printf("    present reported suboptimal\n");
 
     assert_vk(vkWaitForFences(actor->device, 1, &g_fence, VK_TRUE, UINT64_MAX), "wait fence");
     assert_vk(vkResetFences(actor->device, 1, &g_fence), "reset fence");

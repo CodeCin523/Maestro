@@ -12,7 +12,10 @@
 /*  HANDLERS                                                                        */
 /* ================================================================================ */
 
-extern const Maestro
+extern const MaestroLoggerHandler *g_logger;
+extern const MaestroVulkanCoreHandler *g_vulkan_core;
+extern const MaestroVulkanSwapchainHandler *g_vulkan_swapchain;
+extern const MaestroWindowHandler *g_window;
 
 
 /* ================================================================================ */

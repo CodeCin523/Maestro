@@ -9,6 +9,7 @@
 /* ================================================================================ */
 
 extern const char * const maestro_name_logger;
+extern const char * const maestro_name_path;
 extern const char * const maestro_name_window;
 extern const char * const maestro_name_vulkan_core;
 extern const char * const maestro_name_vulkan_device;

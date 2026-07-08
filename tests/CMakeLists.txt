@@ -43,6 +43,28 @@ add_test(
 
 
 add_executable(
+    test_maestro_path
+    test_path.c
+)
+
+target_link_libraries(
+    test_maestro_path PRIVATE
+    HARP::Harp
+    Maestro
+)
+
+target_include_directories(
+    test_maestro_path PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
+)
+
+add_test(
+    NAME test_maestro_path
+    COMMAND test_maestro_path
+)
+
+
+add_executable(
     test_maestro_window
     test_window.c
 )

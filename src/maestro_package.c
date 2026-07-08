@@ -1,6 +1,7 @@
 #include <maestro/maestro.h>
 
 #include "impl/maestro_logger.h"
+#include "impl/maestro_path.h"
 #include "impl/maestro_window.h"
 #include "impl/maestro_vulkan.h"
 
@@ -18,6 +19,7 @@
 /* ================================================================================ */
 
 const char * const maestro_name_logger            = MAESTRO_LOGGER_HANDLER_NAME;
+const char * const maestro_name_path              = MAESTRO_PATH_HANDLER_NAME;
 const char * const maestro_name_window            = MAESTRO_WINDOW_HANDLER_NAME;
 const char * const maestro_name_vulkan_core       = MAESTRO_VULKAN_CORE_HANDLER_NAME;
 const char * const maestro_name_vulkan_device     = MAESTRO_VULKAN_DEVICE_ACTOR_NAME;
@@ -61,6 +63,31 @@ HarpResult maestro_register(HarpCoreHandler *core) {
     logger->log   = logger_fallback_log;
     logger->logf  = logger_fallback_logf;
     logger->flush = logger_flush;
+
+    core->handler_set_serving(core, handler_base, 1);
+
+    // PATH_HANDLER
+    handler_desc = (HarpHandlerDesc) {
+        .name               = maestro_name_path,
+        .version            = MAESTRO_PATH_HANDLER_VERSION,
+        .instance_size      = sizeof(MaestroPathHandlerImpl),
+        .instance_alignment = alignof(MaestroPathHandlerImpl),
+        .pfn_init           = init_path,
+        .pfn_term           = term_path,
+        .p_dependencies     = NULL,
+        .dependency_count   = 0
+    };
+
+    res = core->register_handler(core, &handler_desc, &handler_base);
+    if(res != HARP_RESULT_OK)
+        return res;
+
+    MaestroPathHandler *path = HARP_HANDLER_AS(MaestroPathHandler, handler_base);
+
+    path->make      = path_make;
+    path->makef     = path_makef;
+    path->info      = path_info;
+    path->enumerate = path_enumerate;
 
     core->handler_set_serving(core, handler_base, 1);
 

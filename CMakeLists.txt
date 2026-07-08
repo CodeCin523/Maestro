@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.17)
   # ------------------------------------------------------------------------------
   project(
       Maestro
-      VERSION 1.4.0
+      VERSION 1.6.0
       LANGUAGES C
   )
 
@@ -59,6 +59,7 @@ cmake_minimum_required(VERSION 3.17)
       Maestro PRIVATE
       src/maestro_package.c
       src/impl/maestro_logger.c
+      src/impl/maestro_path.c
       src/impl/maestro_vulkan.c
   )
 

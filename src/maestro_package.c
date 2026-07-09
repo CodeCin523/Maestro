@@ -1,29 +1,33 @@
 #include <maestro/maestro.h>
 
+#include <harp/harp.h>
+#include <harp/utils/harp_helpers.h>
+
+#include "maestro_globals.h"
 #include "impl/maestro_logger.h"
 #include "impl/maestro_path.h"
 #include "impl/maestro_window.h"
 #include "impl/maestro_vulkan.h"
 
-#include "maestro_names.h"
-
-#include <harp/harp.h>
-
-#include <harp/utils/harp_helpers.h>
-
 #include <stdalign.h>
 
 
 /* ================================================================================ */
-/*  NAMES                                                                           */
+/*  GLOBALS                                                                         */
 /* ================================================================================ */
 
-const char * const maestro_name_logger            = MAESTRO_LOGGER_HANDLER_NAME;
-const char * const maestro_name_path              = MAESTRO_PATH_HANDLER_NAME;
-const char * const maestro_name_window            = MAESTRO_WINDOW_HANDLER_NAME;
-const char * const maestro_name_vulkan_core       = MAESTRO_VULKAN_CORE_HANDLER_NAME;
-const char * const maestro_name_vulkan_device     = MAESTRO_VULKAN_DEVICE_ACTOR_NAME;
-const char * const maestro_name_vulkan_swapchain  = MAESTRO_VULKAN_SWAPCHAIN_HANDLER_NAME;
+const MaestroLoggerHandler *g_logger                    = NULL;
+const MaestroPathHandler *g_path                        = NULL;
+const MaestroVulkanCoreHandler *g_vulkan_core           = NULL;
+const MaestroVulkanSwapchainHandler *g_vulkan_swapchain = NULL;
+const MaestroWindowHandler *g_window                    = NULL;
+
+const char * const g_logger_name            = MAESTRO_LOGGER_HANDLER_NAME;
+const char * const g_path_name              = MAESTRO_PATH_HANDLER_NAME;
+const char * const g_window_name            = MAESTRO_WINDOW_HANDLER_NAME;
+const char * const g_vulkan_core_name       = MAESTRO_VULKAN_CORE_HANDLER_NAME;
+const char * const g_vulkan_device_name     = MAESTRO_VULKAN_DEVICE_ACTOR_NAME;
+const char * const g_vulkan_swapchain_name  = MAESTRO_VULKAN_SWAPCHAIN_HANDLER_NAME;
 
 
 /* ================================================================================ */
@@ -36,20 +40,16 @@ HarpResult maestro_register(HarpCoreHandler *core) {
     HarpHandlerDesc handler_desc    = {0};
     HarpActorDesc actor_desc        = {0};
 
-    HarpDependencyDesc deps[] = {
-        {maestro_name_logger,        0, UINT32_MAX},
-        {maestro_name_window,        0, UINT32_MAX},
-        {maestro_name_vulkan_core,   0, UINT32_MAX}
-    };
 
     // LOGGER_HANDLER
     handler_desc = (HarpHandlerDesc) {
-        .name               = maestro_name_logger,
+        .name               = g_logger_name,
         .version            = MAESTRO_LOGGER_HANDLER_VERSION,
         .instance_size      = sizeof(MaestroLoggerHandlerImpl),
         .instance_alignment = alignof(MaestroLoggerHandlerImpl),
         .pfn_init           = init_logger,
         .pfn_term           = term_logger,
+        .pfn_patch          = patch_logger,
         .p_dependencies     = NULL,
         .dependency_count   = 0
     };
@@ -68,12 +68,13 @@ HarpResult maestro_register(HarpCoreHandler *core) {
 
     // PATH_HANDLER
     handler_desc = (HarpHandlerDesc) {
-        .name               = maestro_name_path,
+        .name               = g_path_name,
         .version            = MAESTRO_PATH_HANDLER_VERSION,
         .instance_size      = sizeof(MaestroPathHandlerImpl),
         .instance_alignment = alignof(MaestroPathHandlerImpl),
         .pfn_init           = init_path,
         .pfn_term           = term_path,
+        .pfn_patch          = patch_path,
         .p_dependencies     = NULL,
         .dependency_count   = 0
     };
@@ -93,12 +94,13 @@ HarpResult maestro_register(HarpCoreHandler *core) {
 
     // WINDOW_HANDLER
     handler_desc = (HarpHandlerDesc) {
-        .name               = maestro_name_window,
+        .name               = g_window_name,
         .version            = MAESTRO_WINDOW_HANDLER_VERSION,
         .instance_size      = sizeof(MaestroWindowHandlerImpl),
         .instance_alignment = alignof(MaestroWindowHandlerImpl),
         .pfn_init           = init_window,
         .pfn_term           = term_window,
+        .pfn_patch          = patch_window,
         .p_dependencies     = NULL,
         .dependency_count   = 0
     };
@@ -125,12 +127,13 @@ HarpResult maestro_register(HarpCoreHandler *core) {
 
     // VULKAN_CORE_HANDLER
     handler_desc = (HarpHandlerDesc) {
-        .name               = maestro_name_vulkan_core,
+        .name               = g_vulkan_core_name,
         .version            = MAESTRO_VULKAN_CORE_HANDLER_VERSION,
         .instance_size      = sizeof(MaestroVulkanCoreHandlerImpl),
         .instance_alignment = alignof(MaestroVulkanCoreHandlerImpl),
         .pfn_init           = init_vulkan_instance,
         .pfn_term           = term_vulkan_instance,
+        .pfn_patch          = patch_vulkan_instance,
         .p_dependencies     = NULL,
         .dependency_count   = 0
     };
@@ -149,13 +152,14 @@ HarpResult maestro_register(HarpCoreHandler *core) {
 
     // VULKAN_DEVICE_ACTOR
     actor_desc = (HarpActorDesc) {
-        .name               = maestro_name_vulkan_device,
+        .name               = g_vulkan_device_name,
         .version            = MAESTRO_VULKAN_DEVICE_ACTOR_VERSION,
         .instance_size      = sizeof(MaestroVulkanDeviceActorImpl),
         .instance_alignment = alignof(MaestroVulkanDeviceActorImpl),
         .pfn_create         = create_vulkan_device,
         .pfn_destroy        = destroy_vulkan_device,
-        .parent_handler     = deps[2]
+        .pfn_patch          = patch_vulkan_device,
+        .parent_handler     = HARP_DEPENDENCY(g_vulkan_core_name, 0, UINT32_MAX)
     };
 
     res = core->register_actor(core, &actor_desc);
@@ -164,17 +168,18 @@ HarpResult maestro_register(HarpCoreHandler *core) {
 
     // VULKAN_SWAPCHAIN_HANDLER
     HarpDependencyDesc swapchain_deps[] = {
-        {maestro_name_window,      0, UINT32_MAX},
-        {maestro_name_vulkan_core, 0, UINT32_MAX}
+        {g_window_name,      0, UINT32_MAX},
+        {g_vulkan_core_name, 0, UINT32_MAX}
     };
 
     handler_desc = (HarpHandlerDesc) {
-        .name               = maestro_name_vulkan_swapchain,
+        .name               = g_vulkan_swapchain_name,
         .version            = MAESTRO_VULKAN_SWAPCHAIN_HANDLER_VERSION,
         .instance_size      = sizeof(MaestroVulkanSwapchainHandlerImpl),
         .instance_alignment = alignof(MaestroVulkanSwapchainHandlerImpl),
         .pfn_init           = init_vulkan_swapchain,
         .pfn_term           = term_vulkan_swapchain,
+        .pfn_patch          = patch_vulkan_swapchain,
         .p_dependencies     = swapchain_deps,
         .dependency_count   = 2
     };
@@ -190,6 +195,15 @@ HarpResult maestro_register(HarpCoreHandler *core) {
     swapchain->recreate = swapchain_recreate;
 
     core->handler_set_serving(core, handler_base, 1);
+
+
+    // SAVES GLOBAL
+    g_logger = logger;
+    g_path = path;
+    g_vulkan_core = vulkan_core;
+    g_vulkan_swapchain = swapchain;
+    g_window = window;
+
 
     return HARP_RESULT_OK;
 }

@@ -83,6 +83,7 @@ HarpResult window_create_vulkan_surface(MaestroWindowHandler *h, VkInstance inst
 
 HarpResult init_window(HarpCoreHandler *core_handler, HarpHandlerBase *base, HarpCreatorBase *creator);
 HarpResult term_window(HarpCoreHandler *core_handler, HarpHandlerBase *base);
+HarpResult patch_window(HarpCoreHandler *core_handler, HarpHandlerBase *base);
 
 
 #endif /* IMPL_MAESTRO_WINDOW_H */

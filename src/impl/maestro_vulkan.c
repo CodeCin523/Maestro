@@ -310,6 +310,34 @@ HarpResult term_vulkan_instance(HarpCoreHandler *core_handler, HarpHandlerBase *
     return HARP_RESULT_OK;
 }
 
+HarpResult patch_vulkan_instance(HarpCoreHandler *core_handler, HarpHandlerBase *base) {
+    HARP_UNUSED(core_handler);
+    MaestroVulkanCoreHandlerImpl *impl = HARP_HANDLER_AS(MaestroVulkanCoreHandlerImpl, base);
+
+    // the messenger dispatches into the module that created it; recreate it
+    // so validation output runs through this module's callback
+    if(impl->pub.debug_messenger != VK_NULL_HANDLE) {
+        PFN_vkDestroyDebugUtilsMessengerEXT destroy_fn = (PFN_vkDestroyDebugUtilsMessengerEXT)
+            vkGetInstanceProcAddr(impl->pub.instance, "vkDestroyDebugUtilsMessengerEXT");
+        PFN_vkCreateDebugUtilsMessengerEXT create_fn = (PFN_vkCreateDebugUtilsMessengerEXT)
+            vkGetInstanceProcAddr(impl->pub.instance, "vkCreateDebugUtilsMessengerEXT");
+
+        if(destroy_fn && create_fn) {
+            destroy_fn(impl->pub.instance, impl->pub.debug_messenger, NULL);
+            impl->pub.debug_messenger = VK_NULL_HANDLE;
+
+            VkDebugUtilsMessengerCreateInfoEXT debug_info;
+            fill_debug_messenger_info(&debug_info, impl->logger);
+            if(create_fn(impl->pub.instance, &debug_info, NULL, &impl->pub.debug_messenger) != VK_SUCCESS) {
+                impl->pub.debug_messenger = VK_NULL_HANDLE;
+                MAESTRO_LOG_WARN(impl->logger, base->name, "Failed to recreate debug messenger after swap");
+            }
+        }
+    }
+
+    return HARP_RESULT_OK;
+}
+
 
 
 /* ================================================================================ */
@@ -540,6 +568,15 @@ HarpResult destroy_vulkan_device(HarpCoreHandler *core_handler, HarpActorBase *b
 
     impl->pub.queue_count = 0;
 
+    return HARP_RESULT_OK;
+}
+
+HarpResult patch_vulkan_device(HarpCoreHandler *core_handler, HarpActorBase *base) {
+    HARP_UNUSED(core_handler);
+    HARP_UNUSED(base);
+
+    // the actor publishes only data (device, queues); buffer helpers live on
+    // the core handler and were refreshed by swap-time registration
     return HARP_RESULT_OK;
 }
 
@@ -911,5 +948,14 @@ HarpResult term_vulkan_swapchain(HarpCoreHandler *core_handler, HarpHandlerBase 
         impl->pub.swapchain = VK_NULL_HANDLE;
     }
 
+    return HARP_RESULT_OK;
+}
+
+HarpResult patch_vulkan_swapchain(HarpCoreHandler *core_handler, HarpHandlerBase *base) {
+    HARP_UNUSED(core_handler);
+    HARP_UNUSED(base);
+
+    // swap-time registration refreshed acquire/present/recreate; the rest is
+    // Vulkan handles and data
     return HARP_RESULT_OK;
 }

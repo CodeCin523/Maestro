@@ -23,6 +23,7 @@ HarpResult path_enumerate(MaestroPathHandler *h, const char *path, MaestroPathEn
 
 HarpResult init_path(HarpCoreHandler *core_handler, HarpHandlerBase *base, HarpCreatorBase *creator);
 HarpResult term_path(HarpCoreHandler *core_handler, HarpHandlerBase *base);
+HarpResult patch_path(HarpCoreHandler *core_handler, HarpHandlerBase *base);
 
 
 #endif /* IMPL_MAESTRO_PATH_H */

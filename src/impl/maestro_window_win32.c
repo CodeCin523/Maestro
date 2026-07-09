@@ -580,5 +580,17 @@ HarpResult term_window(HarpCoreHandler *core_handler, HarpHandlerBase *base) {
     return HARP_RESULT_OK;
 }
 
+HarpResult patch_window(HarpCoreHandler *core_handler, HarpHandlerBase *base) {
+    HARP_UNUSED(core_handler);
+    MaestroWindowHandlerImpl *handler = (MaestroWindowHandlerImpl *)base;
+
+    // the live HWND still dispatches through the retired module's wndproc;
+    // repoint it at this module's copy
+    if(handler->hwnd)
+        SetWindowLongPtrA(handler->hwnd, GWLP_WNDPROC, (LONG_PTR)win32_process_message);
+
+    return HARP_RESULT_OK;
+}
+
 
 #endif /* HARP_PLATFORM_WINDOWS */

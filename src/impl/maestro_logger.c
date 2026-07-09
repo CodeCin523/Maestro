@@ -334,3 +334,20 @@ HarpResult term_logger(HarpCoreHandler *core_handler, HarpHandlerBase *base) {
     
     return HARP_RESULT_OK; // a cleanup should never fail.
 }
+HarpResult patch_logger(HarpCoreHandler *core_handler, HarpHandlerBase *base) {
+    HARP_UNUSED(core_handler);
+    MaestroLoggerHandlerImpl *handler = (MaestroLoggerHandlerImpl *)base;
+
+    // swap-time registration rewired the fallbacks; restore the real
+    // implementation when the handler is initialized
+    if(HARP_STATUS_IS_VALID(base->status)) {
+        handler->pub.log  = logger_log;
+        handler->pub.logf = logger_logf;
+    } else {
+        handler->pub.log  = logger_fallback_log;
+        handler->pub.logf = logger_fallback_logf;
+    }
+    handler->pub.flush = logger_flush;
+
+    return HARP_RESULT_OK;
+}

@@ -693,5 +693,14 @@ HarpResult term_window(HarpCoreHandler *core_handler, HarpHandlerBase *base) {
     return HARP_RESULT_OK;
 }
 
+HarpResult patch_window(HarpCoreHandler *core_handler, HarpHandlerBase *base) {
+    HARP_UNUSED(core_handler);
+    HARP_UNUSED(base);
+
+    // X11 only holds data (window id, atoms, connection); no OS callback
+    // points into module code, so there is nothing to repoint
+    return HARP_RESULT_OK;
+}
+
 
 #endif /* HARP_PLATFORM_LINUX */

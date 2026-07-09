@@ -29,6 +29,7 @@ void logger_flush(MaestroLoggerHandler *h);
 
 HarpResult init_logger(HarpCoreHandler *core_handler, HarpHandlerBase *base, HarpCreatorBase *creator);
 HarpResult term_logger(HarpCoreHandler *core_handler, HarpHandlerBase *base);
+HarpResult patch_logger(HarpCoreHandler *core_handler, HarpHandlerBase *base);
 
 
 #endif /* IMPL_MAESTRO_LOGGER_H */

@@ -433,3 +433,12 @@ HarpResult term_path(HarpCoreHandler *core_handler, HarpHandlerBase *base) {
 
     return HARP_RESULT_OK;
 }
+
+HarpResult patch_path(HarpCoreHandler *core_handler, HarpHandlerBase *base) {
+    HARP_UNUSED(core_handler);
+    HARP_UNUSED(base);
+
+    // swap-time registration already refreshed the function pointers and
+    // nothing outside the module points at path code
+    return HARP_RESULT_OK;
+}

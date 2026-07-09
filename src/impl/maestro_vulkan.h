@@ -38,10 +38,12 @@ void vulkan_destroy_buffer(MaestroVulkanDeviceActor *device, VkBuffer buffer, Vk
 
 HarpResult init_vulkan_instance(HarpCoreHandler *core_handler, HarpHandlerBase *base, HarpCreatorBase *creator);
 HarpResult term_vulkan_instance(HarpCoreHandler *core_handler, HarpHandlerBase *base);
+HarpResult patch_vulkan_instance(HarpCoreHandler *core_handler, HarpHandlerBase *base);
 
 
 HarpResult create_vulkan_device(HarpCoreHandler *core_handler, HarpActorBase *base, HarpCreatorBase *creator);
 HarpResult destroy_vulkan_device(HarpCoreHandler *core_handler, HarpActorBase *base);
+HarpResult patch_vulkan_device(HarpCoreHandler *core_handler, HarpActorBase *base);
 
 
 HarpResult swapchain_acquire(MaestroVulkanSwapchainHandler *h, VkSemaphore signal_semaphore, uint32_t *out_image_index, uint8_t *out_suboptimal);
@@ -50,6 +52,7 @@ HarpResult swapchain_recreate(MaestroVulkanSwapchainHandler *h, MaestroVulkanDev
 
 HarpResult init_vulkan_swapchain(HarpCoreHandler *core_handler, HarpHandlerBase *base, HarpCreatorBase *creator);
 HarpResult term_vulkan_swapchain(HarpCoreHandler *core_handler, HarpHandlerBase *base);
+HarpResult patch_vulkan_swapchain(HarpCoreHandler *core_handler, HarpHandlerBase *base);
 
 
 #endif /* IMPL_MAESTRO_VULKAN_H */

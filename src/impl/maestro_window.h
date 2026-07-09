@@ -1,7 +1,6 @@
 #ifndef IMPL_MAESTRO_WINDOW_H
 #define IMPL_MAESTRO_WINDOW_H
 
-#include <maestro/maestro_logger.h>
 #include <maestro/maestro_window.h>
 
 #include <harp/utils/harp_helpers.h>
@@ -20,8 +19,6 @@
 
 typedef struct MaestroWindowHandlerImpl {
     MaestroWindowHandler pub;
-
-    MaestroLoggerHandler *logger;
 
     char title_base[256];
     char title_ext[256];

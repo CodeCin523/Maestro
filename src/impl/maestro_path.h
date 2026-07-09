@@ -1,17 +1,9 @@
 #ifndef IMPL_MAESTRO_PATH_H
 #define IMPL_MAESTRO_PATH_H
 
-#include <maestro/maestro_logger.h>
 #include <maestro/maestro_path.h>
 
 #include <harp/utils/harp_platform.h>
-
-
-typedef struct MaestroPathHandlerImpl {
-    MaestroPathHandler pub;
-
-    MaestroLoggerHandler *logger;
-} MaestroPathHandlerImpl;
 
 
 size_t path_make(MaestroPathHandler *h, MaestroPathBase base, char *buf, size_t buf_size, const char *relative);

@@ -1,4 +1,6 @@
-#include "maestro_window.h"
+#include "impl/maestro_window.h"
+
+#include "maestro_globals.h"
 
 #include <xcb/xinput.h>
 
@@ -124,10 +126,10 @@ static void linux_apply_mouse_capture(MaestroWindowHandlerImpl *impl) {
     // mapped or AlreadyGrabbed while another client holds the pointer.
     xcb_grab_pointer_reply_t *reply = xcb_grab_pointer_reply(impl->connection, cookie, NULL);
     if(!reply || reply->status != XCB_GRAB_STATUS_SUCCESS) {
-        MAESTRO_LOGF_WARN(impl->logger, impl->pub._base.name,
+        MAESTRO_LOGF_WARN(g_logger, impl->pub._base.name,
             "pointer grab failed (status=%u)", reply ? reply->status : 255u);
     } else {
-        MAESTRO_LOG_DEBUG(impl->logger, impl->pub._base.name, "pointer grab applied");
+        MAESTRO_LOG_DEBUG(g_logger, impl->pub._base.name, "pointer grab applied");
     }
     free(reply);
 
@@ -160,6 +162,7 @@ static const uint32_t WINDOW_VULKAN_EXTENSION_COUNT = 2;
 
 void window_get_vulkan_extensions(MaestroWindowHandler *h, uint32_t *out_count, const char **out_extensions) {
     HARP_UNUSED(h);
+    if(!out_count) return;
     *out_count = WINDOW_VULKAN_EXTENSION_COUNT;
     if(out_extensions) {
         for(uint32_t i = 0; i < WINDOW_VULKAN_EXTENSION_COUNT; ++i)
@@ -168,6 +171,9 @@ void window_get_vulkan_extensions(MaestroWindowHandler *h, uint32_t *out_count, 
 }
 
 HarpResult window_create_vulkan_surface(MaestroWindowHandler *h, VkInstance instance, VkSurfaceKHR *out_surface) {
+    HARP_CHECK_STATE(HARP_HANDLER_IS_VALID(h), HARP_RESULT_INVALID_STATE);
+    HARP_CHECK_ARG(out_surface != NULL, HARP_RESULT_MISSING_OUTPUT);
+
     MaestroWindowHandlerImpl *window = HARP_HANDLER_AS(MaestroWindowHandlerImpl, h);
     *out_surface = VK_NULL_HANDLE;
 
@@ -180,7 +186,7 @@ HarpResult window_create_vulkan_surface(MaestroWindowHandler *h, VkInstance inst
     VkResult res = vkCreateXcbSurfaceKHR(instance, &create_info, NULL, out_surface);
     if(res != VK_SUCCESS) {
         *out_surface = VK_NULL_HANDLE;
-        MAESTRO_LOG_FATAL(window->logger, window->pub._base.name, "Failed to create Vulkan surface");
+        MAESTRO_LOG_FATAL(g_logger, window->pub._base.name, "Failed to create Vulkan surface");
         return HARP_RESULT_FAILED;
     }
 
@@ -188,6 +194,7 @@ HarpResult window_create_vulkan_surface(MaestroWindowHandler *h, VkInstance inst
 }
 
 void window_pump_messages(MaestroWindowHandler *h) {
+    if(!HARP_HANDLER_IS_VALID(h)) return;
     MaestroWindowHandlerImpl *handler = (MaestroWindowHandlerImpl *)h;
 
     if(!handler->connection) return;
@@ -396,6 +403,7 @@ void window_pump_messages(MaestroWindowHandler *h) {
 }
 
 void window_set_mouse_capture(MaestroWindowHandler *h, uint8_t captured) {
+    if(!HARP_HANDLER_IS_VALID(h)) return;
     MaestroWindowHandlerImpl *impl = (MaestroWindowHandlerImpl *)h;
 
     if(captured) {
@@ -416,6 +424,7 @@ void window_set_mouse_capture(MaestroWindowHandler *h, uint8_t captured) {
 }
 
 void window_set_cursor_visible(MaestroWindowHandler *h, uint8_t visible) {
+    if(!HARP_HANDLER_IS_VALID(h)) return;
     MaestroWindowHandlerImpl *impl = (MaestroWindowHandlerImpl *)h;
 
     // The flag stores the visibility preference. While captured the cursor is
@@ -434,12 +443,14 @@ void window_set_cursor_visible(MaestroWindowHandler *h, uint8_t visible) {
 }
 
 void window_set_title(MaestroWindowHandler *h, const char *title) {
+    if(!HARP_HANDLER_IS_VALID(h) || !title) return;
     MaestroWindowHandlerImpl *impl = (MaestroWindowHandlerImpl *)h;
     snprintf(impl->title_base, sizeof(impl->title_base), "%s", title);
     window_apply_title(impl);
 }
 
 void window_set_title_extension(MaestroWindowHandler *h, const char *extension) {
+    if(!HARP_HANDLER_IS_VALID(h)) return;
     MaestroWindowHandlerImpl *impl = (MaestroWindowHandlerImpl *)h;
     if(extension)
         snprintf(impl->title_ext, sizeof(impl->title_ext), "%s", extension);
@@ -449,6 +460,7 @@ void window_set_title_extension(MaestroWindowHandler *h, const char *extension) 
 }
 
 void window_set_size(MaestroWindowHandler *h, uint32_t width, uint32_t height) {
+    if(!HARP_HANDLER_IS_VALID(h)) return;
     MaestroWindowHandlerImpl *impl = (MaestroWindowHandlerImpl *)h;
     uint32_t values[] = { width, height };
     xcb_configure_window(impl->connection, impl->window,
@@ -459,6 +471,7 @@ void window_set_size(MaestroWindowHandler *h, uint32_t width, uint32_t height) {
 }
 
 void window_set_position(MaestroWindowHandler *h, int32_t x, int32_t y) {
+    if(!HARP_HANDLER_IS_VALID(h)) return;
     MaestroWindowHandlerImpl *impl = (MaestroWindowHandlerImpl *)h;
     uint32_t values[] = { (uint32_t)x, (uint32_t)y };
     xcb_configure_window(impl->connection, impl->window,
@@ -467,6 +480,7 @@ void window_set_position(MaestroWindowHandler *h, int32_t x, int32_t y) {
 }
 
 void window_set_fullscreen(MaestroWindowHandler *h, uint8_t fullscreen) {
+    if(!HARP_HANDLER_IS_VALID(h)) return;
     MaestroWindowHandlerImpl *impl = (MaestroWindowHandlerImpl *)h;
 
     if(impl->net_wm_state == XCB_ATOM_NONE ||
@@ -491,6 +505,7 @@ void window_set_fullscreen(MaestroWindowHandler *h, uint8_t fullscreen) {
 }
 
 void window_request_attention(MaestroWindowHandler *h) {
+    if(!HARP_HANDLER_IS_VALID(h)) return;
     MaestroWindowHandlerImpl *impl = (MaestroWindowHandlerImpl *)h;
 
     if(impl->net_wm_state == XCB_ATOM_NONE ||
@@ -527,20 +542,15 @@ HarpResult init_window(HarpCoreHandler *core_handler, HarpHandlerBase *base, Har
         window_creator = *(MaestroWindowCreator *)creator;
     }
 
+    HARP_UNUSED(core_handler);
     MaestroWindowHandlerImpl *handler = (MaestroWindowHandlerImpl *)base;
-
-    if(core_handler->get_handler(
-        core_handler,
-        &HARP_DEPENDENCY(MAESTRO_LOGGER_HANDLER_NAME, 0, UINT32_MAX),
-        (HarpHandlerBase **)&handler->logger) != HARP_RESULT_OK)
-            return HARP_RESULT_FAILED;
 
     // Open the X display via Xlib, then bridge to an XCB connection.
     // This works identically under native X11 and under XWayland --
     // the compositor presents itself as a regular X server either way.
     handler->display = XOpenDisplay(NULL);
     if(!handler->display) {
-        MAESTRO_LOG_FATAL(handler->logger, base->name, "Failed to open X display");
+        MAESTRO_LOG_FATAL(g_logger, base->name, "Failed to open X display");
         return HARP_RESULT_FAILED;
     }
 
@@ -549,7 +559,7 @@ HarpResult init_window(HarpCoreHandler *core_handler, HarpHandlerBase *base, Har
 
     handler->connection = XGetXCBConnection(handler->display);
     if(!handler->connection || xcb_connection_has_error(handler->connection)) {
-        MAESTRO_LOG_FATAL(handler->logger, base->name, "Failed to get XCB connection");
+        MAESTRO_LOG_FATAL(g_logger, base->name, "Failed to get XCB connection");
         XCloseDisplay(handler->display);
         handler->display = NULL;
         return HARP_RESULT_FAILED;
@@ -646,7 +656,7 @@ HarpResult init_window(HarpCoreHandler *core_handler, HarpHandlerBase *base, Har
         }
     }
     if(!handler->xi2_opcode)
-        MAESTRO_LOG_WARN(handler->logger, base->name,
+        MAESTRO_LOG_WARN(g_logger, base->name,
             "XInput2 unavailable, captured mouse deltas fall back to absolute positions");
 
     handler->blank_cursor           = XCB_CURSOR_NONE;

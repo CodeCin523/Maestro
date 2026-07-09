@@ -16,11 +16,11 @@
 /*  GLOBALS                                                                         */
 /* ================================================================================ */
 
-const MaestroLoggerHandler *g_logger                    = NULL;
-const MaestroPathHandler *g_path                        = NULL;
-const MaestroVulkanCoreHandler *g_vulkan_core           = NULL;
-const MaestroVulkanSwapchainHandler *g_vulkan_swapchain = NULL;
-const MaestroWindowHandler *g_window                    = NULL;
+MaestroLoggerHandler *g_logger                    = NULL;
+MaestroPathHandler *g_path                        = NULL;
+MaestroVulkanCoreHandler *g_vulkan_core           = NULL;
+MaestroVulkanSwapchainHandler *g_vulkan_swapchain = NULL;
+MaestroWindowHandler *g_window                    = NULL;
 
 const char * const g_logger_name            = MAESTRO_LOGGER_HANDLER_NAME;
 const char * const g_path_name              = MAESTRO_PATH_HANDLER_NAME;
@@ -70,8 +70,8 @@ HarpResult maestro_register(HarpCoreHandler *core) {
     handler_desc = (HarpHandlerDesc) {
         .name               = g_path_name,
         .version            = MAESTRO_PATH_HANDLER_VERSION,
-        .instance_size      = sizeof(MaestroPathHandlerImpl),
-        .instance_alignment = alignof(MaestroPathHandlerImpl),
+        .instance_size      = sizeof(MaestroPathHandler),
+        .instance_alignment = alignof(MaestroPathHandler),
         .pfn_init           = init_path,
         .pfn_term           = term_path,
         .pfn_patch          = patch_path,
@@ -154,8 +154,8 @@ HarpResult maestro_register(HarpCoreHandler *core) {
     actor_desc = (HarpActorDesc) {
         .name               = g_vulkan_device_name,
         .version            = MAESTRO_VULKAN_DEVICE_ACTOR_VERSION,
-        .instance_size      = sizeof(MaestroVulkanDeviceActorImpl),
-        .instance_alignment = alignof(MaestroVulkanDeviceActorImpl),
+        .instance_size      = sizeof(MaestroVulkanDeviceActor),
+        .instance_alignment = alignof(MaestroVulkanDeviceActor),
         .pfn_create         = create_vulkan_device,
         .pfn_destroy        = destroy_vulkan_device,
         .pfn_patch          = patch_vulkan_device,

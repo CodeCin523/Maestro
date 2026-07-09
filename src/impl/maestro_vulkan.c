@@ -1,4 +1,6 @@
-#include "maestro_vulkan.h"
+#include "impl/maestro_vulkan.h"
+
+#include "maestro_globals.h"
 
 #include <maestro/maestro.h>
 
@@ -31,29 +33,28 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debug_messenger_callback(
     void *user_data
 ) {
     HARP_UNUSED(type);
-    MaestroLoggerHandler *logger = (MaestroLoggerHandler *)user_data;
+    HARP_UNUSED(user_data);
 
     if(severity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)
-        MAESTRO_LOG_ERROR(logger, "Vulkan", data->pMessage);
+        MAESTRO_LOG_ERROR(g_logger, "Vulkan", data->pMessage);
     else if(severity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT)
-        MAESTRO_LOG_WARN(logger, "Vulkan", data->pMessage);
+        MAESTRO_LOG_WARN(g_logger, "Vulkan", data->pMessage);
     else
-        MAESTRO_LOG_DEBUG(logger, "Vulkan", data->pMessage);
+        MAESTRO_LOG_DEBUG(g_logger, "Vulkan", data->pMessage);
 
     return VK_FALSE;
 }
 
-static void fill_debug_messenger_info(VkDebugUtilsMessengerCreateInfoEXT *info, MaestroLoggerHandler *logger) {
+static void fill_debug_messenger_info(VkDebugUtilsMessengerCreateInfoEXT *info) {
     *info = (VkDebugUtilsMessengerCreateInfoEXT){
         .sType           = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
         .messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
                            VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
                            VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
-        .messageType     = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT    |
-                           VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT  |
+        .messageType     = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
+                           VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
                            VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
         .pfnUserCallback = debug_messenger_callback,
-        .pUserData       = logger
     };
 }
 
@@ -70,6 +71,9 @@ HarpResult vulkan_create_buffer(
     VkBuffer                 *out_buffer,
     VkDeviceMemory           *out_memory
 ) {
+    HARP_CHECK_STATE(HARP_ACTOR_IS_VALID(actor), HARP_RESULT_INVALID_STATE);
+    HARP_CHECK_ARG(out_buffer != NULL && out_memory != NULL, HARP_RESULT_MISSING_OUTPUT);
+
     *out_buffer = VK_NULL_HANDLE;
     *out_memory = VK_NULL_HANDLE;
 
@@ -132,6 +136,8 @@ void vulkan_destroy_buffer(
     VkBuffer                  buffer,
     VkDeviceMemory            memory
 ) {
+    if(!HARP_ACTOR_IS_VALID(actor)) return;
+
     if(memory != VK_NULL_HANDLE) vkFreeMemory(actor->device, memory, NULL);
     if(buffer != VK_NULL_HANDLE) vkDestroyBuffer(actor->device, buffer, NULL);
 }
@@ -161,11 +167,6 @@ HarpResult init_vulkan_instance(HarpCoreHandler *core_handler, HarpHandlerBase *
 
     MaestroVulkanCoreHandlerImpl *impl = HARP_HANDLER_AS(MaestroVulkanCoreHandlerImpl, base);
 
-    if(core_handler->get_handler(
-        core_handler,
-        &HARP_DEPENDENCY(MAESTRO_LOGGER_HANDLER_NAME, 0, UINT32_MAX),
-        (HarpHandlerBase **)&impl->logger) != HARP_RESULT_OK)
-            return HARP_RESULT_FAILED;
 
     uint8_t validation = creator.enable_validation;
 #if HARP_DEBUG
@@ -192,7 +193,7 @@ HarpResult init_vulkan_instance(HarpCoreHandler *core_handler, HarpHandlerBase *
             }
             if(!found) {
                 free(available);
-                MAESTRO_LOG_FATAL(impl->logger, base->name, "Required validation layer not available");
+                MAESTRO_LOG_FATAL(g_logger, base->name, "Required validation layer not available");
                 return HARP_RESULT_FAILED;
             }
         }
@@ -230,7 +231,7 @@ HarpResult init_vulkan_instance(HarpCoreHandler *core_handler, HarpHandlerBase *
 
     VkDebugUtilsMessengerCreateInfoEXT debug_info = {0};
     if(validation)
-        fill_debug_messenger_info(&debug_info, impl->logger);
+        fill_debug_messenger_info(&debug_info);
 
     VkInstanceCreateInfo instance_info = {
         .sType                   = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
@@ -246,7 +247,7 @@ HarpResult init_vulkan_instance(HarpCoreHandler *core_handler, HarpHandlerBase *
     free(extensions);
 
     if(res != VK_SUCCESS) {
-        MAESTRO_LOG_FATAL(impl->logger, base->name, "Failed to create Vulkan instance");
+        MAESTRO_LOG_FATAL(g_logger, base->name, "Failed to create Vulkan instance");
         return HARP_RESULT_FAILED;
     }
 
@@ -255,7 +256,7 @@ HarpResult init_vulkan_instance(HarpCoreHandler *core_handler, HarpHandlerBase *
             vkGetInstanceProcAddr(impl->pub.instance, "vkCreateDebugUtilsMessengerEXT");
 
         if(!fn || fn(impl->pub.instance, &debug_info, NULL, &impl->pub.debug_messenger) != VK_SUCCESS) {
-            MAESTRO_LOG_FATAL(impl->logger, base->name, "Failed to create debug messenger");
+            MAESTRO_LOG_FATAL(g_logger, base->name, "Failed to create debug messenger");
             vkDestroyInstance(impl->pub.instance, NULL);
             impl->pub.instance = VK_NULL_HANDLE;
             return HARP_RESULT_FAILED;
@@ -264,7 +265,7 @@ HarpResult init_vulkan_instance(HarpCoreHandler *core_handler, HarpHandlerBase *
 
     vkEnumeratePhysicalDevices(impl->pub.instance, &impl->device_count, NULL);
     if(impl->device_count == 0) {
-        MAESTRO_LOG_FATAL(impl->logger, base->name, "No Vulkan-capable GPU found");
+        MAESTRO_LOG_FATAL(g_logger, base->name, "No Vulkan-capable GPU found");
         vkDestroyInstance(impl->pub.instance, NULL);
         impl->pub.instance = VK_NULL_HANDLE;
         return HARP_RESULT_FAILED;
@@ -281,7 +282,7 @@ HarpResult init_vulkan_instance(HarpCoreHandler *core_handler, HarpHandlerBase *
 
     impl->pub.pfn_default_device_score = default_device_score;
 
-    MAESTRO_LOG_INFO(impl->logger, base->name, "Vulkan instance created");
+    MAESTRO_LOG_INFO(g_logger, base->name, "Vulkan instance created");
     return HARP_RESULT_OK;
 }
 
@@ -327,10 +328,10 @@ HarpResult patch_vulkan_instance(HarpCoreHandler *core_handler, HarpHandlerBase 
             impl->pub.debug_messenger = VK_NULL_HANDLE;
 
             VkDebugUtilsMessengerCreateInfoEXT debug_info;
-            fill_debug_messenger_info(&debug_info, impl->logger);
+            fill_debug_messenger_info(&debug_info);
             if(create_fn(impl->pub.instance, &debug_info, NULL, &impl->pub.debug_messenger) != VK_SUCCESS) {
                 impl->pub.debug_messenger = VK_NULL_HANDLE;
-                MAESTRO_LOG_WARN(impl->logger, base->name, "Failed to recreate debug messenger after swap");
+                MAESTRO_LOG_WARN(g_logger, base->name, "Failed to recreate debug messenger after swap");
             }
         }
     }
@@ -362,7 +363,7 @@ HarpResult create_vulkan_device(HarpCoreHandler *core_handler, HarpActorBase *ba
     if(!(creator_base->flags & HARP_CREATOR_FLAG_DEFAULT_CREATOR))
         creator = *(MaestroVulkanDeviceCreator *)creator_base;
 
-    MaestroVulkanDeviceActorImpl *impl = HARP_ACTOR_AS(MaestroVulkanDeviceActorImpl, base);
+    MaestroVulkanDeviceActor *impl = HARP_ACTOR_AS(MaestroVulkanDeviceActor, base);
 
     HarpHandlerBase *handler_base = NULL;
     if(core_handler->get_handler(
@@ -372,7 +373,6 @@ HarpResult create_vulkan_device(HarpCoreHandler *core_handler, HarpActorBase *ba
             return HARP_RESULT_FAILED;
 
     MaestroVulkanCoreHandlerImpl *core = HARP_HANDLER_AS(MaestroVulkanCoreHandlerImpl, handler_base);
-    impl->logger = core->logger;
 
     MaestroVulkanDeviceScorePfn score_fn = creator.pfn_score
         ? creator.pfn_score
@@ -393,13 +393,13 @@ HarpResult create_vulkan_device(HarpCoreHandler *core_handler, HarpActorBase *ba
     }
 
     if(best_device == VK_NULL_HANDLE) {
-        MAESTRO_LOG_FATAL(impl->logger, base->name, "No suitable GPU available");
+        MAESTRO_LOG_FATAL(g_logger, base->name, "No suitable GPU available");
         return HARP_RESULT_FAILED;
     }
 
     /* Remove from pool: swap with last element. */
     core->devices[best_index] = core->devices[--core->device_count];
-    impl->pub.physical_device = best_device;
+    impl->physical_device = best_device;
 
     /* Verify swapchain extension support when a surface is provided. */
     if(creator.surface != VK_NULL_HANDLE) {
@@ -422,7 +422,7 @@ HarpResult create_vulkan_device(HarpCoreHandler *core_handler, HarpActorBase *ba
         free(exts);
 
         if(!has_swapchain) {
-            MAESTRO_LOG_FATAL(impl->logger, base->name, "Device does not support VK_KHR_swapchain");
+            MAESTRO_LOG_FATAL(g_logger, base->name, "Device does not support VK_KHR_swapchain");
             return HARP_RESULT_FAILED;
         }
     }
@@ -468,7 +468,7 @@ HarpResult create_vulkan_device(HarpCoreHandler *core_handler, HarpActorBase *ba
             if(tmp[i].supports_present) { found_present = 1; break; }
 
         if(!found_present) {
-            MAESTRO_LOG_FATAL(impl->logger, base->name, "No queue family supports present for this surface");
+            MAESTRO_LOG_FATAL(g_logger, base->name, "No queue family supports present for this surface");
             return HARP_RESULT_FAILED;
         }
     }
@@ -525,48 +525,48 @@ HarpResult create_vulkan_device(HarpCoreHandler *core_handler, HarpActorBase *ba
         .pEnabledFeatures        = NULL  /* must be NULL when using pNext features chain */
     };
 
-    VkResult vk_res = vkCreateDevice(best_device, &device_info, NULL, &impl->pub.device);
+    VkResult vk_res = vkCreateDevice(best_device, &device_info, NULL, &impl->device);
     free(all_extensions);
 
     if(vk_res != VK_SUCCESS) {
-        MAESTRO_LOG_FATAL(impl->logger, base->name, "Failed to create logical device");
+        MAESTRO_LOG_FATAL(g_logger, base->name, "Failed to create logical device");
         return HARP_RESULT_FAILED;
     }
 
     /* Retrieve queue handles and fill the public array. */
-    impl->pub.queue_count = tmp_count;
+    impl->queue_count = tmp_count;
     for(uint32_t i = 0; i < tmp_count; ++i) {
-        impl->pub.queues[i] = tmp[i];
-        vkGetDeviceQueue(impl->pub.device, tmp[i].family, 0, &impl->pub.queues[i].queue);
+        impl->queues[i] = tmp[i];
+        vkGetDeviceQueue(impl->device, tmp[i].family, 0, &impl->queues[i].queue);
     }
 
-    MAESTRO_LOG_INFO(impl->logger, base->name, "Vulkan device created");
+    MAESTRO_LOG_INFO(g_logger, base->name, "Vulkan device created");
     return HARP_RESULT_OK;
 }
 
 HarpResult destroy_vulkan_device(HarpCoreHandler *core_handler, HarpActorBase *base) {
-    MaestroVulkanDeviceActorImpl *impl = HARP_ACTOR_AS(MaestroVulkanDeviceActorImpl, base);
+    MaestroVulkanDeviceActor *impl = HARP_ACTOR_AS(MaestroVulkanDeviceActor, base);
 
-    if(impl->pub.device != VK_NULL_HANDLE) {
-        vkDeviceWaitIdle(impl->pub.device);
-        vkDestroyDevice(impl->pub.device, NULL);
-        impl->pub.device = VK_NULL_HANDLE;
+    if(impl->device != VK_NULL_HANDLE) {
+        vkDeviceWaitIdle(impl->device);
+        vkDestroyDevice(impl->device, NULL);
+        impl->device = VK_NULL_HANDLE;
     }
 
     /* Return physical device to the pool. */
     HarpHandlerBase *handler_base = NULL;
-    if(impl->pub.physical_device != VK_NULL_HANDLE
+    if(impl->physical_device != VK_NULL_HANDLE
         && core_handler->get_handler(
             core_handler,
             &HARP_DEPENDENCY(MAESTRO_VULKAN_CORE_HANDLER_NAME, 0, UINT32_MAX),
             &handler_base) == HARP_RESULT_OK)
     {
         MaestroVulkanCoreHandlerImpl *core = HARP_HANDLER_AS(MaestroVulkanCoreHandlerImpl, handler_base);
-        core->devices[core->device_count++] = impl->pub.physical_device;
-        impl->pub.physical_device = VK_NULL_HANDLE;
+        core->devices[core->device_count++] = impl->physical_device;
+        impl->physical_device = VK_NULL_HANDLE;
     }
 
-    impl->pub.queue_count = 0;
+    impl->queue_count = 0;
 
     return HARP_RESULT_OK;
 }
@@ -673,7 +673,7 @@ static HarpResult swapchain_build(
         ? impl->requested_usage
         : VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
     if((usage & caps.supportedUsageFlags) != usage) {
-        MAESTRO_LOGF_ERROR(impl->logger, impl->pub._base.name,
+        MAESTRO_LOGF_ERROR(g_logger, impl->pub._base.name,
             "unsupported swapchain image usage: requested=0x%x supported=0x%x",
             usage, caps.supportedUsageFlags);
         return HARP_RESULT_INVALID_ARGUMENTS;
@@ -889,20 +889,10 @@ HarpResult init_vulkan_swapchain(HarpCoreHandler *core_handler, HarpHandlerBase 
     impl->surface         = VK_NULL_HANDLE;
     impl->device          = VK_NULL_HANDLE;
     impl->physical_device = VK_NULL_HANDLE;
-    impl->logger          = NULL;
     impl->requested_usage = 0;
 
     if(creator_base->flags & HARP_CREATOR_FLAG_DEFAULT_CREATOR)
         return HARP_RESULT_FAILED;
-
-    HarpHandlerBase *logger_base = NULL;
-    HarpResult res = core_handler->get_handler(
-        core_handler,
-        &HARP_DEPENDENCY(MAESTRO_LOGGER_HANDLER_NAME, 0, UINT32_MAX),
-        &logger_base);
-    if(res != HARP_RESULT_OK)
-        return res;
-    impl->logger = (MaestroLoggerHandler *)logger_base;
 
     MaestroVulkanSwapchainCreator *creator = (MaestroVulkanSwapchainCreator *)creator_base;
     MaestroVulkanDeviceActor *device = creator->device;
@@ -917,11 +907,11 @@ HarpResult init_vulkan_swapchain(HarpCoreHandler *core_handler, HarpHandlerBase 
     impl->physical_device = device->physical_device;
     impl->requested_usage = creator->image_usage;
 
-    res = swapchain_build(impl, device, width, height, format, present_mode);
+    HarpResult res = swapchain_build(impl, device, width, height, format, present_mode);
     if(res != HARP_RESULT_OK)
         return res;
 
-    MAESTRO_LOGF_INFO(impl->logger, base->name,
+    MAESTRO_LOGF_INFO(g_logger, base->name,
         "swapchain created: %ux%u  fmt=%u  mode=%u  images=%u  usage=0x%x  alpha=0x%x",
         impl->pub.extent.width, impl->pub.extent.height,
         impl->pub.format, impl->pub.present_mode, impl->pub.image_count,

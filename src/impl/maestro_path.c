@@ -1,4 +1,6 @@
-#include "maestro_path.h"
+#include "impl/maestro_path.h"
+
+#include "maestro_globals.h"
 
 #include <harp/utils/harp_helpers.h>
 
@@ -75,7 +77,7 @@ static size_t join_normalize(const char *base, const char *relative, char *buf, 
 }
 
 size_t path_make(MaestroPathHandler *h, MaestroPathBase base, char *buf, size_t buf_size, const char *relative) {
-    if(!h || !buf || buf_size == 0 || base >= MAESTRO_PATH_BASE_COUNT)
+    if(!HARP_HANDLER_IS_VALID(h) || !buf || buf_size == 0 || base >= MAESTRO_PATH_BASE_COUNT)
         return 0;
 
     return join_normalize(h->bases[base], relative, buf, buf_size);
@@ -105,7 +107,8 @@ size_t path_makef(MaestroPathHandler *h, MaestroPathBase base, char *buf, size_t
 #if HARP_PLATFORM_LINUX
 
 HarpResult path_info(MaestroPathHandler *h, const char *path, MaestroPathInfo *out_info) {
-    HARP_CHECK_ARG(h != NULL && path != NULL, HARP_RESULT_INVALID_ARGUMENTS);
+    HARP_CHECK_STATE(HARP_HANDLER_IS_VALID(h), HARP_RESULT_INVALID_STATE);
+    HARP_CHECK_ARG(path != NULL, HARP_RESULT_INVALID_ARGUMENTS);
     HARP_CHECK_ARG(out_info != NULL, HARP_RESULT_MISSING_OUTPUT);
 
     struct stat st;
@@ -125,7 +128,8 @@ HarpResult path_info(MaestroPathHandler *h, const char *path, MaestroPathInfo *o
 }
 
 HarpResult path_enumerate(MaestroPathHandler *h, const char *path, MaestroPathEntryFlags filter, uint32_t *count, MaestroPathEntry *entries) {
-    HARP_CHECK_ARG(h != NULL && path != NULL, HARP_RESULT_INVALID_ARGUMENTS);
+    HARP_CHECK_STATE(HARP_HANDLER_IS_VALID(h), HARP_RESULT_INVALID_STATE);
+    HARP_CHECK_ARG(path != NULL, HARP_RESULT_INVALID_ARGUMENTS);
     HARP_CHECK_ARG(count != NULL, HARP_RESULT_MISSING_OUTPUT);
 
     DIR *dir = opendir(path);
@@ -227,7 +231,8 @@ static int64_t filetime_to_unix(FILETIME ft) {
 }
 
 HarpResult path_info(MaestroPathHandler *h, const char *path, MaestroPathInfo *out_info) {
-    HARP_CHECK_ARG(h != NULL && path != NULL, HARP_RESULT_INVALID_ARGUMENTS);
+    HARP_CHECK_STATE(HARP_HANDLER_IS_VALID(h), HARP_RESULT_INVALID_STATE);
+    HARP_CHECK_ARG(path != NULL, HARP_RESULT_INVALID_ARGUMENTS);
     HARP_CHECK_ARG(out_info != NULL, HARP_RESULT_MISSING_OUTPUT);
 
     WIN32_FILE_ATTRIBUTE_DATA data;
@@ -249,7 +254,7 @@ HarpResult path_info(MaestroPathHandler *h, const char *path, MaestroPathInfo *o
 HarpResult path_enumerate(MaestroPathHandler *h, const char *path,
                           MaestroPathEntryFlags filter,
                           uint32_t *count, MaestroPathEntry *entries) {
-    HARP_CHECK_ARG(h != NULL && path != NULL, HARP_RESULT_INVALID_ARGUMENTS);
+    HARP_CHECK_ARG(path != NULL, HARP_RESULT_INVALID_ARGUMENTS);
     HARP_CHECK_ARG(count != NULL, HARP_RESULT_MISSING_OUTPUT);
 
     char pattern[MAESTRO_PATH_MAX];
@@ -364,30 +369,25 @@ HarpResult init_path(HarpCoreHandler *core_handler, HarpHandlerBase *base, HarpC
             path_creator.app_name = "maestro";
     }
 
-    MaestroPathHandlerImpl *handler = (MaestroPathHandlerImpl *)base;
+    MaestroPathHandler *handler = (MaestroPathHandler *) base;
 
-    if(core_handler->get_handler(
-        core_handler,
-        &HARP_DEPENDENCY(MAESTRO_LOGGER_HANDLER_NAME, 0, UINT32_MAX),
-        (HarpHandlerBase **)&handler->logger) != HARP_RESULT_OK)
-            return HARP_RESULT_FAILED;
 
     const char *exe_dir = NULL;
     const char *cwd_dir = NULL;
     if(core_handler->get_executable_directory(core_handler, &exe_dir) != HARP_RESULT_OK || !exe_dir) {
-        MAESTRO_LOG_FATAL(handler->logger, base->name, "Failed to query executable directory");
+        MAESTRO_LOG_FATAL(g_logger, base->name, "Failed to query executable directory");
         return HARP_RESULT_FAILED;
     }
     if(core_handler->get_working_directory(core_handler, &cwd_dir) != HARP_RESULT_OK || !cwd_dir) {
-        MAESTRO_LOG_FATAL(handler->logger, base->name, "Failed to query working directory");
+        MAESTRO_LOG_FATAL(g_logger, base->name, "Failed to query working directory");
         return HARP_RESULT_FAILED;
     }
 
-    if(set_base(&handler->pub, MAESTRO_PATH_BASE_EXE, exe_dir) != 0 ||
-       set_base(&handler->pub, MAESTRO_PATH_BASE_CWD, cwd_dir) != 0 ||
-       set_base(&handler->pub, MAESTRO_PATH_BASE_DEFAULT,
+    if(set_base(handler, MAESTRO_PATH_BASE_EXE, exe_dir) != 0 ||
+       set_base(handler, MAESTRO_PATH_BASE_CWD, cwd_dir) != 0 ||
+       set_base(handler, MAESTRO_PATH_BASE_DEFAULT,
                 path_creator.default_path ? path_creator.default_path : exe_dir) != 0) {
-        MAESTRO_LOG_FATAL(handler->logger, base->name, "Base directory exceeds MAESTRO_PATH_MAX");
+        MAESTRO_LOG_FATAL(g_logger, base->name, "Base directory exceeds MAESTRO_PATH_MAX");
         return HARP_RESULT_FAILED;
     }
 
@@ -409,15 +409,15 @@ HarpResult init_path(HarpCoreHandler *core_handler, HarpHandlerBase *base, HarpC
     for(size_t i = 0; i < sizeof(user_bases) / sizeof(user_bases[0]); ++i) {
         if(resolve_user_base(user_dir, sizeof(user_dir),
                              user_bases[i].env_name, user_bases[i].home_suffix,
-                             path_creator.app_name, handler->pub.bases[MAESTRO_PATH_BASE_EXE]) != 0 ||
-           set_base(&handler->pub, user_bases[i].base, user_dir) != 0) {
-            MAESTRO_LOG_FATAL(handler->logger, base->name, "User directory exceeds MAESTRO_PATH_MAX");
+                             path_creator.app_name, handler->bases[MAESTRO_PATH_BASE_EXE]) != 0 ||
+           set_base(handler, user_bases[i].base, user_dir) != 0) {
+            MAESTRO_LOG_FATAL(g_logger, base->name, "User directory exceeds MAESTRO_PATH_MAX");
             return HARP_RESULT_FAILED;
         }
 
-        if(mkdir_p(handler->pub.bases[user_bases[i].base]) != 0)
-            MAESTRO_LOGF_WARN(handler->logger, base->name,
-                "Failed to create directory '%s'", handler->pub.bases[user_bases[i].base]);
+        if(mkdir_p(handler->bases[user_bases[i].base]) != 0)
+            MAESTRO_LOGF_WARN(g_logger, base->name,
+                "Failed to create directory '%s'", handler->bases[user_bases[i].base]);
     }
 
     return HARP_RESULT_OK;
@@ -426,10 +426,9 @@ HarpResult init_path(HarpCoreHandler *core_handler, HarpHandlerBase *base, HarpC
 HarpResult term_path(HarpCoreHandler *core_handler, HarpHandlerBase *base) {
     HARP_UNUSED(core_handler);
 
-    MaestroPathHandlerImpl *handler = (MaestroPathHandlerImpl *)base;
+    MaestroPathHandler *handler = (MaestroPathHandler *)base;
 
-    handler->logger = NULL;
-    memset(handler->pub.bases, 0, sizeof(handler->pub.bases));
+    memset(handler->bases, 0, sizeof(handler->bases));
 
     return HARP_RESULT_OK;
 }

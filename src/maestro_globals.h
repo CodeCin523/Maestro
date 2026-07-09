@@ -13,11 +13,11 @@
 /*  HANDLERS                                                                        */
 /* ================================================================================ */
 
-extern const MaestroLoggerHandler *g_logger;
-extern const MaestroPathHandler *g_path;
-extern const MaestroVulkanCoreHandler *g_vulkan_core;
-extern const MaestroVulkanSwapchainHandler *g_vulkan_swapchain;
-extern const MaestroWindowHandler *g_window;
+extern MaestroLoggerHandler *g_logger;
+extern MaestroPathHandler *g_path;
+extern MaestroVulkanCoreHandler *g_vulkan_core;
+extern MaestroVulkanSwapchainHandler *g_vulkan_swapchain;
+extern MaestroWindowHandler *g_window;
 
 
 /* ================================================================================ */

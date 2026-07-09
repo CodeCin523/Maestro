@@ -2,27 +2,17 @@
 #define IMPL_MAESTRO_VULKAN_H
 
 #include <maestro/maestro_vulkan.h>
-#include <maestro/maestro_logger.h>
 
 
 typedef struct MaestroVulkanCoreHandlerImpl {
     MaestroVulkanCoreHandler pub;
 
-    MaestroLoggerHandler *logger;
-
     VkPhysicalDevice *devices;
     uint32_t device_count;
 } MaestroVulkanCoreHandlerImpl;
 
-typedef struct MaestroVulkanDeviceActorImpl {
-    MaestroVulkanDeviceActor pub;
-
-    MaestroLoggerHandler *logger;
-} MaestroVulkanDeviceActorImpl;
-
 typedef struct MaestroVulkanSwapchainHandlerImpl {
     MaestroVulkanSwapchainHandler pub;
-    MaestroLoggerHandler *logger;
     VkDevice device;
     VkPhysicalDevice physical_device;
     VkSurfaceKHR surface;

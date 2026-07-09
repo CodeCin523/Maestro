@@ -1,4 +1,4 @@
-#include "maestro_logger.h"
+#include "impl/maestro_logger.h"
 
 #include <harp/utils/harp_helpers.h>
 #include <harp/utils/harp_platform.h>
@@ -152,6 +152,8 @@ static inline uint64_t logger_write_prefix(
 
 void logger_fallback_log(MaestroLoggerHandler *h, const MaestroLoggerLevel level, const HarpName name, const char *msg) {
     MaestroLoggerHandlerImpl *impl = HARP_HANDLER_AS(MaestroLoggerHandlerImpl, h);
+    if(!impl)
+        return;
     const char *lvl = LOGGER_LEVEL_STR[level];
 
     char ts[LOGGER_TIME_SIZE + 1] = {0};
@@ -164,6 +166,8 @@ void logger_fallback_log(MaestroLoggerHandler *h, const MaestroLoggerLevel level
 }
 void logger_fallback_logf(MaestroLoggerHandler *h, const MaestroLoggerLevel level, const HarpName name, const char *fmt, ...) {
     MaestroLoggerHandlerImpl *impl = HARP_HANDLER_AS(MaestroLoggerHandlerImpl, h);
+    if(!impl)
+        return;
     const char *lvl = LOGGER_LEVEL_STR[level];
 
     char ts[LOGGER_TIME_SIZE + 1] = {0};

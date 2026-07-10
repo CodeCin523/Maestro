@@ -1,6 +1,7 @@
 #include <maestro/maestro.h>
 
 #include <harp/harp.h>
+#include <harp/harp_ext.h>
 #include <harp/utils/harp_helpers.h>
 
 #include "maestro_globals.h"
@@ -65,6 +66,25 @@ HarpResult maestro_register(HarpCoreHandler *core) {
     logger->flush = logger_flush;
 
     core->handler_set_serving(core, handler_base, 1);
+
+    // HARP LOGGER
+    {
+        HarpDependencyDesc ext_dep = HARP_DEPENDENCY(HARP_EXTENSION_HANDLER_NAME, HARP_EXTENSION_HANDLER_VERSION, UINT32_MAX);
+        HarpHandlerBase *ext_base = NULL;
+
+        // older harp runtimes have no extension handler; harp then keeps its own sink
+        if(core->get_handler(core, &ext_dep, &ext_base) == HARP_RESULT_OK) {
+            HarpExtensionHandler *ext = (HarpExtensionHandler *)ext_base;
+
+            HarpLoggerDesc harp_logger_desc = {
+                .user = logger,
+                .pfn_log = logger_harp_log,
+                .pfn_flush = logger_harp_flush
+            };
+
+            ext->set_logger(ext, &harp_logger_desc);
+        }
+    }
 
     // PATH_HANDLER
     handler_desc = (HarpHandlerDesc) {

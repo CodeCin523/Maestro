@@ -281,6 +281,51 @@ void logger_flush(MaestroLoggerHandler *h) {
 
 
 /* ================================================================================ */
+/*  HARP LOGGER                                                                     */
+/* ================================================================================ */
+
+// harp messages are written as harp gives them, without the maestro prefix
+void logger_harp_log(void *user, HarpLogLevel level, const char *msg) {
+    MaestroLoggerHandler *h = (MaestroLoggerHandler *)user;
+    MaestroLoggerHandlerImpl *impl = HARP_HANDLER_AS(MaestroLoggerHandlerImpl, h);
+
+    // harp logs before init_logger ran and after term_logger; no buffer then
+    if(!HARP_HANDLER_IS_VALID(impl)) {
+        printf("%s\n", msg);
+        return;
+    }
+
+    char *buf = impl->p_buf;
+    u64 i = impl->buf_index;
+
+    usize len = strlen(msg);
+
+    if(impl->buf_size - i < len + LOGGER_MIN_FREE_SPACE) {
+        logger_flush(h);
+        i = 0;
+    }
+
+    usize cap = impl->buf_size - i;
+
+    if(len >= cap)
+        len = cap - 1;
+
+    memcpy(&buf[i], msg, len);
+    i += len;
+
+    buf[i++] = '\n';
+
+    impl->buf_index = i;
+
+    if(level >= HARP_LOG_LEVEL_ERROR)
+        logger_flush(h);
+}
+void logger_harp_flush(void *user) {
+    logger_flush((MaestroLoggerHandler *)user);
+}
+
+
+/* ================================================================================ */
 /*  LOGGER HANDLER                                                                  */
 /* ================================================================================ */
 

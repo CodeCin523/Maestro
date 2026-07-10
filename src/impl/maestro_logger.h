@@ -3,6 +3,8 @@
 
 #include <maestro/maestro_logger.h>
 
+#include <harp/harp_ext.h>
+
 #include <time.h>
 
 
@@ -25,6 +27,9 @@ void logger_log(MaestroLoggerHandler *h, const MaestroLoggerLevel level, const H
 void logger_logf(MaestroLoggerHandler *h, const MaestroLoggerLevel level, const HarpName name, const char *fmt, ...);
 
 void logger_flush(MaestroLoggerHandler *h);
+
+void logger_harp_log(void *user, HarpLogLevel level, const char *msg);
+void logger_harp_flush(void *user);
 
 
 HarpResult init_logger(HarpCoreHandler *core_handler, HarpHandlerBase *base, HarpCreatorBase *creator);

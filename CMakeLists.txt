@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.17)
 # ------------------------------------------------------------------------------
 project(
     Maestro
-    VERSION 1.6.2
+    VERSION 1.6.3
     LANGUAGES C
 )
 

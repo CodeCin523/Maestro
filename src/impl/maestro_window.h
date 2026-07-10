@@ -24,7 +24,7 @@ typedef struct MaestroWindowHandlerImpl {
     char title_ext[256];
 
     /* ground-truth held state, persists across frames; keys[] is derived from it  */
-    uint8_t held[MAESTRO_KEY_COUNT];
+    b8 held[MAESTRO_KEY_COUNT];
     uint8_t held_mouse;
 
 #if HARP_PLATFORM_WINDOWS
@@ -35,12 +35,12 @@ typedef struct MaestroWindowHandlerImpl {
     /* Raw Input: per-device deltas for captured mode, free of pointer
        acceleration. raw_input is 0 when registration failed. last_abs
        tracks absolute-mode devices (tablets, RDP) to derive deltas. */
-    uint8_t raw_input;
+    b8 raw_input;
     int32_t raw_accum_x;
     int32_t raw_accum_y;
     int32_t last_abs_x;
     int32_t last_abs_y;
-    uint8_t has_last_abs;
+    b8 has_last_abs;
 #elif HARP_PLATFORM_LINUX
     Display *display;
     xcb_connection_t *connection;
@@ -67,13 +67,13 @@ typedef struct MaestroWindowHandlerImpl {
 
 
 void window_pump_messages(MaestroWindowHandler *h);
-void window_set_mouse_capture(MaestroWindowHandler *h, uint8_t captured);
-void window_set_cursor_visible(MaestroWindowHandler *h, uint8_t visible);
+void window_set_mouse_capture(MaestroWindowHandler *h, b8 captured);
+void window_set_cursor_visible(MaestroWindowHandler *h, b8 visible);
 void window_set_title(MaestroWindowHandler *h, const char *title);
 void window_set_title_extension(MaestroWindowHandler *h, const char *extension);
 void window_set_size(MaestroWindowHandler *h, uint32_t width, uint32_t height);
 void window_set_position(MaestroWindowHandler *h, int32_t x, int32_t y);
-void window_set_fullscreen(MaestroWindowHandler *h, uint8_t fullscreen);
+void window_set_fullscreen(MaestroWindowHandler *h, b8 fullscreen);
 void window_request_attention(MaestroWindowHandler *h);
 void window_get_vulkan_extensions(MaestroWindowHandler *h, uint32_t *out_count, const char **out_extensions);
 HarpResult window_create_vulkan_surface(MaestroWindowHandler *h, VkInstance instance, VkSurfaceKHR *out_surface);

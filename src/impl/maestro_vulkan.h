@@ -36,8 +36,8 @@ HarpResult destroy_vulkan_device(HarpCoreHandler *core_handler, HarpActorBase *b
 HarpResult patch_vulkan_device(HarpCoreHandler *core_handler, HarpActorBase *base);
 
 
-HarpResult swapchain_acquire(MaestroVulkanSwapchainHandler *h, VkSemaphore signal_semaphore, uint32_t *out_image_index, uint8_t *out_suboptimal);
-HarpResult swapchain_present(MaestroVulkanSwapchainHandler *h, VkQueue queue, VkSemaphore wait_semaphore, uint32_t image_index, uint8_t *out_suboptimal);
+HarpResult swapchain_acquire(MaestroVulkanSwapchainHandler *h, VkSemaphore signal_semaphore, uint32_t *out_image_index, b8 *out_suboptimal);
+HarpResult swapchain_present(MaestroVulkanSwapchainHandler *h, VkQueue queue, VkSemaphore wait_semaphore, uint32_t image_index, b8 *out_suboptimal);
 HarpResult swapchain_recreate(MaestroVulkanSwapchainHandler *h, MaestroVulkanDeviceActor *device, uint32_t width, uint32_t height, VkPresentModeKHR present_mode);
 
 HarpResult init_vulkan_swapchain(HarpCoreHandler *core_handler, HarpHandlerBase *base, HarpCreatorBase *creator);

@@ -283,7 +283,7 @@ void window_pump_messages(MaestroWindowHandler *h) {
 
                 xcb_atom_t *atoms = xcb_get_property_value(reply);
                 uint32_t    count = (uint32_t)(xcb_get_property_value_length(reply) / sizeof(xcb_atom_t));
-                uint8_t     fs    = 0;
+                b8          fs    = 0;
                 for(uint32_t i = 0; i < count; ++i) {
                     if(atoms[i] == handler->net_wm_state_fullscreen) { fs = 1; break; }
                 }
@@ -296,7 +296,7 @@ void window_pump_messages(MaestroWindowHandler *h) {
             case XCB_KEY_PRESS:
             case XCB_KEY_RELEASE: {
                 xcb_key_press_event_t *kp = (xcb_key_press_event_t *)event;
-                uint8_t pressed = (event->response_type & ~0x80) == XCB_KEY_PRESS;
+                b8 pressed = (event->response_type & ~0x80) == XCB_KEY_PRESS;
                 KeySym sym = XkbKeycodeToKeysym(handler->display, kp->detail, 0, 0);
                 MaestroKey key = keysym_to_maestro(sym);
                 if(key < MAESTRO_KEY_COUNT) {
@@ -345,7 +345,7 @@ void window_pump_messages(MaestroWindowHandler *h) {
             case XCB_BUTTON_PRESS:
             case XCB_BUTTON_RELEASE: {
                 xcb_button_press_event_t *bp = (xcb_button_press_event_t *)event;
-                uint8_t pressed = (event->response_type & ~0x80) == XCB_BUTTON_PRESS;
+                b8 pressed = (event->response_type & ~0x80) == XCB_BUTTON_PRESS;
 
                 // Scroll wheel: only fires on press (no matching release event).
                 if(pressed) {
@@ -402,7 +402,7 @@ void window_pump_messages(MaestroWindowHandler *h) {
     }
 }
 
-void window_set_mouse_capture(MaestroWindowHandler *h, uint8_t captured) {
+void window_set_mouse_capture(MaestroWindowHandler *h, b8 captured) {
     if(!HARP_HANDLER_IS_VALID(h)) return;
     MaestroWindowHandlerImpl *impl = (MaestroWindowHandlerImpl *)h;
 
@@ -423,7 +423,7 @@ void window_set_mouse_capture(MaestroWindowHandler *h, uint8_t captured) {
     }
 }
 
-void window_set_cursor_visible(MaestroWindowHandler *h, uint8_t visible) {
+void window_set_cursor_visible(MaestroWindowHandler *h, b8 visible) {
     if(!HARP_HANDLER_IS_VALID(h)) return;
     MaestroWindowHandlerImpl *impl = (MaestroWindowHandlerImpl *)h;
 
@@ -479,7 +479,7 @@ void window_set_position(MaestroWindowHandler *h, int32_t x, int32_t y) {
     xcb_flush(impl->connection);
 }
 
-void window_set_fullscreen(MaestroWindowHandler *h, uint8_t fullscreen) {
+void window_set_fullscreen(MaestroWindowHandler *h, b8 fullscreen) {
     if(!HARP_HANDLER_IS_VALID(h)) return;
     MaestroWindowHandlerImpl *impl = (MaestroWindowHandlerImpl *)h;
 

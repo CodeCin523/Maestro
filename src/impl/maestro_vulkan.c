@@ -168,7 +168,7 @@ HarpResult init_vulkan_instance(HarpCoreHandler *core_handler, HarpHandlerBase *
     MaestroVulkanCoreHandlerImpl *impl = HARP_HANDLER_AS(MaestroVulkanCoreHandlerImpl, base);
 
 
-    uint8_t validation = creator.enable_validation;
+    b8 validation = creator.enable_validation;
 #if HARP_DEBUG
     validation = 1;
 #endif
@@ -184,7 +184,7 @@ HarpResult init_vulkan_instance(HarpCoreHandler *core_handler, HarpHandlerBase *
         vkEnumerateInstanceLayerProperties(&layer_count, available);
 
         for(uint32_t i = 0; i < VALIDATION_LAYER_COUNT; ++i) {
-            uint8_t found = 0;
+            b8 found = 0;
             for(uint32_t j = 0; j < layer_count; ++j) {
                 if(strcmp(VALIDATION_LAYERS[i], available[j].layerName) == 0) {
                     found = 1;
@@ -345,7 +345,7 @@ HarpResult patch_vulkan_instance(HarpCoreHandler *core_handler, HarpHandlerBase 
 /*  VULKAN DEVICE ACTOR                                                             */
 /* ================================================================================ */
 
-static int queue_priority(VkQueueFlags flags, uint8_t supports_present) {
+static int queue_priority(VkQueueFlags flags, b8 supports_present) {
     if((flags & VK_QUEUE_GRAPHICS_BIT) && supports_present) return 0;
     if(flags & VK_QUEUE_GRAPHICS_BIT)                       return 1;
     if(flags & VK_QUEUE_COMPUTE_BIT)                        return 2;
@@ -412,7 +412,7 @@ HarpResult create_vulkan_device(HarpCoreHandler *core_handler, HarpActorBase *ba
 
         vkEnumerateDeviceExtensionProperties(best_device, NULL, &ext_count, exts);
 
-        uint8_t has_swapchain = 0;
+        b8 has_swapchain = 0;
         for(uint32_t i = 0; i < ext_count; ++i) {
             if(strcmp(exts[i].extensionName, VK_KHR_SWAPCHAIN_EXTENSION_NAME) == 0) {
                 has_swapchain = 1;
@@ -455,7 +455,7 @@ HarpResult create_vulkan_device(HarpCoreHandler *core_handler, HarpActorBase *ba
             .queue            = VK_NULL_HANDLE,
             .family           = i,
             .flags            = flags,
-            .supports_present = (uint8_t)present
+            .supports_present = (b8)present
         };
     }
 
@@ -463,7 +463,7 @@ HarpResult create_vulkan_device(HarpCoreHandler *core_handler, HarpActorBase *ba
 
     /* Validate: at least one queue must support present when a surface is given. */
     if(creator.surface != VK_NULL_HANDLE) {
-        uint8_t found_present = 0;
+        b8 found_present = 0;
         for(uint32_t i = 0; i < tmp_count; ++i)
             if(tmp[i].supports_present) { found_present = 1; break; }
 
@@ -499,7 +499,7 @@ HarpResult create_vulkan_device(HarpCoreHandler *core_handler, HarpActorBase *ba
 
     /* Merge user extensions with VK_KHR_swapchain when needed. */
     uint32_t total_ext_count = creator.extension_count;
-    uint8_t  needs_swapchain = (creator.surface != VK_NULL_HANDLE);
+    b8       needs_swapchain = (creator.surface != VK_NULL_HANDLE);
     if(needs_swapchain) total_ext_count++;
 
     const char **all_extensions = NULL;
@@ -667,7 +667,7 @@ static HarpResult swapchain_build(
     }
 
     uint32_t queue_indices[2] = { graphics_family, present_family };
-    uint8_t exclusive = (graphics_family == present_family);
+    b8 exclusive = (graphics_family == present_family);
 
     VkImageUsageFlags usage = impl->requested_usage
         ? impl->requested_usage
@@ -790,7 +790,7 @@ HarpResult swapchain_acquire(
     MaestroVulkanSwapchainHandler *h,
     VkSemaphore signal_semaphore,
     uint32_t *out_image_index,
-    uint8_t *out_suboptimal)
+    b8 *out_suboptimal)
 {
     HARP_CHECK_STATE(HARP_HANDLER_IS_VALID(h), HARP_RESULT_INVALID_STATE);
     MaestroVulkanSwapchainHandlerImpl *impl = (MaestroVulkanSwapchainHandlerImpl *)h;
@@ -819,7 +819,7 @@ HarpResult swapchain_present(
     VkQueue queue,
     VkSemaphore wait_semaphore,
     uint32_t image_index,
-    uint8_t *out_suboptimal)
+    b8 *out_suboptimal)
 {
     HARP_CHECK_STATE(HARP_HANDLER_IS_VALID(h), HARP_RESULT_INVALID_STATE);
 

@@ -35,7 +35,7 @@ typedef struct MaestroVulkanQueue {
     VkQueue      queue;
     uint32_t     family;
     VkQueueFlags flags;
-    uint8_t      supports_present;
+    b8           supports_present;
 } MaestroVulkanQueue;
 
 
@@ -55,7 +55,7 @@ struct MaestroVulkanCoreCreator {
     const char **extensions;
     uint32_t extension_count;
 
-    uint8_t enable_validation;
+    b8 enable_validation;
 };
 
 struct MaestroVulkanCoreHandler {
@@ -143,10 +143,10 @@ struct MaestroVulkanSwapchainHandler {
 
     /* signal_semaphore is signalled when the image is ready to render into.
        out_suboptimal may be NULL if the caller does not care. */
-    HarpResult (*acquire)(MaestroVulkanSwapchainHandler *h, VkSemaphore signal_semaphore, uint32_t *out_image_index, uint8_t *out_suboptimal);
+    HarpResult (*acquire)(MaestroVulkanSwapchainHandler *h, VkSemaphore signal_semaphore, uint32_t *out_image_index, b8 *out_suboptimal);
     /* wait_semaphore is waited on before presenting (render-finished semaphore).
        out_suboptimal may be NULL if the caller does not care. */
-    HarpResult (*present)(MaestroVulkanSwapchainHandler *h, VkQueue queue, VkSemaphore wait_semaphore, uint32_t image_index, uint8_t *out_suboptimal);
+    HarpResult (*present)(MaestroVulkanSwapchainHandler *h, VkQueue queue, VkSemaphore wait_semaphore, uint32_t image_index, b8 *out_suboptimal);
     /* Call on window resize, after acquire/present returns HARP_RESULT_FAILED,
        or at a convenient point after one of them reported suboptimal. */
     HarpResult (*recreate)(MaestroVulkanSwapchainHandler *h, MaestroVulkanDeviceActor *device, uint32_t width, uint32_t height, VkPresentModeKHR present_mode);

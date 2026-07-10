@@ -16,7 +16,7 @@
 /*  KEY MAPPING                                                                     */
 /* ================================================================================ */
 
-static MaestroKey win32_vk_to_maestro(UINT vk, uint8_t extended, uint8_t scan) {
+static MaestroKey win32_vk_to_maestro(UINT vk, b8 extended, uint8_t scan) {
     if(vk >= 'A' && vk <= 'Z')      return (MaestroKey)(MAESTRO_KEY_A  + (vk - 'A'));
     if(vk >= '0' && vk <= '9')      return (MaestroKey)(MAESTRO_KEY_0  + (vk - '0'));
     if(vk >= VK_F1 && vk <= VK_F12) return (MaestroKey)(MAESTRO_KEY_F1 + (vk - VK_F1));
@@ -224,8 +224,8 @@ LRESULT CALLBACK win32_process_message(HWND hwnd, UINT msg, WPARAM w_param, LPAR
         case WM_SYSKEYDOWN:
         case WM_KEYUP:
         case WM_SYSKEYUP: {
-            uint8_t    pressed  = (msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN);
-            uint8_t    extended = (uint8_t)((l_param >> 24) & 1);
+            b8         pressed  = (msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN);
+            b8         extended = (b8)((l_param >> 24) & 1);
             uint8_t    scan     = (uint8_t)((l_param >> 16) & 0xFF);
             MaestroKey key      = win32_vk_to_maestro((UINT)w_param, extended, scan);
             if(key < MAESTRO_KEY_COUNT) {
@@ -258,7 +258,7 @@ LRESULT CALLBACK win32_process_message(HWND hwnd, UINT msg, WPARAM w_param, LPAR
             if(raw.data.mouse.usFlags & MOUSE_MOVE_ABSOLUTE) {
                 // Absolute devices (tablets, RDP): normalized 0..65535 over
                 // the screen; derive deltas from consecutive positions.
-                uint8_t virt = (raw.data.mouse.usFlags & MOUSE_VIRTUAL_DESKTOP) != 0;
+                b8 virt = (raw.data.mouse.usFlags & MOUSE_VIRTUAL_DESKTOP) != 0;
                 int32_t sw = GetSystemMetrics(virt ? SM_CXVIRTUALSCREEN : SM_CXSCREEN);
                 int32_t sh = GetSystemMetrics(virt ? SM_CYVIRTUALSCREEN : SM_CYSCREEN);
                 int32_t ax = MulDiv(raw.data.mouse.lLastX, sw, 65535);
@@ -283,7 +283,7 @@ LRESULT CALLBACK win32_process_message(HWND hwnd, UINT msg, WPARAM w_param, LPAR
             break;
         case WM_XBUTTONDOWN:
         case WM_XBUTTONUP: {
-            uint8_t pressed = (msg == WM_XBUTTONDOWN);
+            b8 pressed = (msg == WM_XBUTTONDOWN);
             uint8_t mask    = (HIWORD(w_param) == XBUTTON1) ? MAESTRO_MOUSE_BACK : MAESTRO_MOUSE_FORWARD;
             if(pressed) { handler->held_mouse |= mask;  handler->pub.mouse_buttons |=  mask; }
             else        { handler->held_mouse &= ~mask; handler->pub.mouse_buttons &= ~mask; }
@@ -294,7 +294,7 @@ LRESULT CALLBACK win32_process_message(HWND hwnd, UINT msg, WPARAM w_param, LPAR
         case WM_LBUTTONUP:
         case WM_MBUTTONUP:
         case WM_RBUTTONUP: {
-            uint8_t pressed = (msg == WM_LBUTTONDOWN || msg == WM_MBUTTONDOWN || msg == WM_RBUTTONDOWN);
+            b8 pressed = (msg == WM_LBUTTONDOWN || msg == WM_MBUTTONDOWN || msg == WM_RBUTTONDOWN);
             uint8_t mask    = 0;
             if     (msg == WM_LBUTTONDOWN || msg == WM_LBUTTONUP) mask = MAESTRO_MOUSE_LEFT;
             else if(msg == WM_RBUTTONDOWN || msg == WM_RBUTTONUP) mask = MAESTRO_MOUSE_RIGHT;
@@ -312,7 +312,7 @@ LRESULT CALLBACK win32_process_message(HWND hwnd, UINT msg, WPARAM w_param, LPAR
 /*  SET FUNCTIONS                                                                   */
 /* ================================================================================ */
 
-void window_set_mouse_capture(MaestroWindowHandler *h, uint8_t captured) {
+void window_set_mouse_capture(MaestroWindowHandler *h, b8 captured) {
     if(!HARP_HANDLER_IS_VALID(h)) return;
     MaestroWindowHandlerImpl *impl = (MaestroWindowHandlerImpl *)h;
 
@@ -331,7 +331,7 @@ void window_set_mouse_capture(MaestroWindowHandler *h, uint8_t captured) {
     }
 }
 
-void window_set_cursor_visible(MaestroWindowHandler *h, uint8_t visible) {
+void window_set_cursor_visible(MaestroWindowHandler *h, b8 visible) {
     if(!HARP_HANDLER_IS_VALID(h)) return;
     // The flag stores the visibility preference. While captured the cursor
     // stays hidden; the preference is applied again on release.
@@ -390,7 +390,7 @@ void window_set_position(MaestroWindowHandler *h, int32_t x, int32_t y) {
         SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
-void window_set_fullscreen(MaestroWindowHandler *h, uint8_t fullscreen) {
+void window_set_fullscreen(MaestroWindowHandler *h, b8 fullscreen) {
     if(!HARP_HANDLER_IS_VALID(h)) return;
     MaestroWindowHandlerImpl *impl = (MaestroWindowHandlerImpl *)h;
 

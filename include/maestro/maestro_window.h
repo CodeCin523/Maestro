@@ -100,13 +100,13 @@ struct MaestroWindowHandler {
     HarpHandlerBase _base;
 
     void (*pump_messages)(MaestroWindowHandler *h);
-    void (*set_mouse_capture)(MaestroWindowHandler *h, uint8_t captured);
-    void (*set_cursor_visible)(MaestroWindowHandler *h, uint8_t visible);
+    void (*set_mouse_capture)(MaestroWindowHandler *h, b8 captured);
+    void (*set_cursor_visible)(MaestroWindowHandler *h, b8 visible);
     void (*set_title)(MaestroWindowHandler *h, const char *title);
     void (*set_title_extension)(MaestroWindowHandler *h, const char *extension);
     void (*set_size)(MaestroWindowHandler *h, uint32_t width, uint32_t height);
     void (*set_position)(MaestroWindowHandler *h, int32_t x, int32_t y);
-    void (*set_fullscreen)(MaestroWindowHandler *h, uint8_t fullscreen);
+    void (*set_fullscreen)(MaestroWindowHandler *h, b8 fullscreen);
     void (*request_attention)(MaestroWindowHandler *h);
     void (*get_vulkan_extensions)(MaestroWindowHandler *h, uint32_t *out_count, const char **out_extensions);
     HarpResult (*create_vulkan_surface)(MaestroWindowHandler *h, VkInstance instance, VkSurfaceKHR *out_surface);

@@ -24,7 +24,7 @@ typedef struct MaestroVulkanDeviceActor MaestroVulkanDeviceActor;
 typedef struct MaestroVulkanSwapchainCreator MaestroVulkanSwapchainCreator;
 typedef struct MaestroVulkanSwapchainHandler MaestroVulkanSwapchainHandler;
 
-typedef int32_t (*MaestroVulkanDeviceScorePfn)(VkPhysicalDevice);
+typedef i32 (*MaestroVulkanDeviceScorePfn)(VkPhysicalDevice);
 
 #define MAESTRO_VULKAN_MAX_QUEUES 8
 
@@ -33,7 +33,7 @@ typedef int32_t (*MaestroVulkanDeviceScorePfn)(VkPhysicalDevice);
    compute-only, then transfer-only. */
 typedef struct MaestroVulkanQueue {
     VkQueue      queue;
-    uint32_t     family;
+    u32     family;
     VkQueueFlags flags;
     b8           supports_present;
 } MaestroVulkanQueue;
@@ -53,7 +53,7 @@ struct MaestroVulkanCoreCreator {
     HarpVersion app_version;
 
     const char **extensions;
-    uint32_t extension_count;
+    u32 extension_count;
 
     b8 enable_validation;
 };
@@ -89,7 +89,7 @@ struct MaestroVulkanDeviceCreator {
     const VkPhysicalDeviceFeatures2 *features;
 
     const char **extensions;
-    uint32_t     extension_count;
+    u32     extension_count;
 
     VkSurfaceKHR surface;
 };
@@ -103,7 +103,7 @@ struct MaestroVulkanDeviceActor {
     /* Queues Maestro created for this device, sorted by priority.
        Iterate to find the queue that matches your needs via flags / supports_present. */
     MaestroVulkanQueue queues[MAESTRO_VULKAN_MAX_QUEUES];
-    uint32_t queue_count;
+    u32 queue_count;
 };
 
 
@@ -119,8 +119,8 @@ struct MaestroVulkanSwapchainCreator {
 
     MaestroVulkanDeviceActor *device;
     VkSurfaceKHR surface;
-    uint32_t width;
-    uint32_t height;
+    u32 width;
+    u32 height;
 
     VkFormat preferred_format;               /* falls back to first available */
     VkPresentModeKHR preferred_present_mode; /* falls back to FIFO            */
@@ -143,13 +143,13 @@ struct MaestroVulkanSwapchainHandler {
 
     /* signal_semaphore is signalled when the image is ready to render into.
        out_suboptimal may be NULL if the caller does not care. */
-    HarpResult (*acquire)(MaestroVulkanSwapchainHandler *h, VkSemaphore signal_semaphore, uint32_t *out_image_index, b8 *out_suboptimal);
+    HarpResult (*acquire)(MaestroVulkanSwapchainHandler *h, VkSemaphore signal_semaphore, u32 *out_image_index, b8 *out_suboptimal);
     /* wait_semaphore is waited on before presenting (render-finished semaphore).
        out_suboptimal may be NULL if the caller does not care. */
-    HarpResult (*present)(MaestroVulkanSwapchainHandler *h, VkQueue queue, VkSemaphore wait_semaphore, uint32_t image_index, b8 *out_suboptimal);
+    HarpResult (*present)(MaestroVulkanSwapchainHandler *h, VkQueue queue, VkSemaphore wait_semaphore, u32 image_index, b8 *out_suboptimal);
     /* Call on window resize, after acquire/present returns HARP_RESULT_FAILED,
        or at a convenient point after one of them reported suboptimal. */
-    HarpResult (*recreate)(MaestroVulkanSwapchainHandler *h, MaestroVulkanDeviceActor *device, uint32_t width, uint32_t height, VkPresentModeKHR present_mode);
+    HarpResult (*recreate)(MaestroVulkanSwapchainHandler *h, MaestroVulkanDeviceActor *device, u32 width, u32 height, VkPresentModeKHR present_mode);
 
     VkSwapchainKHR swapchain;
     VkFormat format;
@@ -161,7 +161,7 @@ struct MaestroVulkanSwapchainHandler {
 
     VkImage *images;
     VkImageView *views;
-    uint32_t image_count;
+    u32 image_count;
 };
 
 

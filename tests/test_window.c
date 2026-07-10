@@ -12,21 +12,21 @@
 #if defined(_WIN32)
 #include <windows.h>
 #define test_sleep_ms(ms) Sleep(ms)
-static double test_wall_seconds(void) {
+static f64 test_wall_seconds(void) {
     static LARGE_INTEGER freq = {0};
     if (freq.QuadPart == 0) QueryPerformanceFrequency(&freq);
     LARGE_INTEGER now;
     QueryPerformanceCounter(&now);
-    return (double)now.QuadPart / (double)freq.QuadPart;
+    return (f64)now.QuadPart / (f64)freq.QuadPart;
 }
 #else
 #include <unistd.h>
 #include <time.h>
 #define test_sleep_ms(ms) usleep((ms) * 1000)
-static double test_wall_seconds(void) {
+static f64 test_wall_seconds(void) {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (double)ts.tv_sec + (double)ts.tv_nsec / 1e9;
+    return (f64)ts.tv_sec + (f64)ts.tv_nsec / 1e9;
 }
 #endif
 
@@ -151,12 +151,12 @@ static void test_window_pump_messages(void) {
     TEST_MARKER("WINDOW", "PUMP_MESSAGES_DONE");
 }
 
-static void test_window_stay_visible(double seconds) {
+static void test_window_stay_visible(f64 seconds) {
     TEST_MARKER("WINDOW", "STAY_VISIBLE");
     printf("    window visible for ~%.1f seconds...\n", seconds);
 
     const int frame_ms = 16;
-    double start = test_wall_seconds();
+    f64 start = test_wall_seconds();
     while ((test_wall_seconds() - start) < seconds) {
         g_window->pump_messages(g_window);
         test_sleep_ms(frame_ms);
@@ -310,9 +310,9 @@ static const char *key_name(MaestroKey k) {
 
 /* Update the title extension to reflect current window state. */
 static void update_state_title(void) {
-    uint8_t captured = MAESTRO_WINDOW_IS_MOUSE_CAPTURED(g_window);
-    uint8_t hidden   = MAESTRO_WINDOW_IS_CURSOR_HIDDEN(g_window);
-    uint8_t fs       = MAESTRO_WINDOW_IS_FULLSCREEN(g_window);
+    b8 captured = MAESTRO_WINDOW_IS_MOUSE_CAPTURED(g_window);
+    b8 hidden   = MAESTRO_WINDOW_IS_CURSOR_HIDDEN(g_window);
+    b8 fs       = MAESTRO_WINDOW_IS_FULLSCREEN(g_window);
 
     if(!captured && !hidden && !fs) {
         g_window->set_title_extension(g_window, NULL);
@@ -344,8 +344,8 @@ static void test_window_run_until_close(void) {
 
     const int frame_ms = 16;
 
-    uint8_t prev_minimized = MAESTRO_WINDOW_IS_MINIMIZED(g_window);
-    uint8_t prev_focused   = MAESTRO_WINDOW_IS_FOCUSED(g_window);
+    b8 prev_minimized = MAESTRO_WINDOW_IS_MINIMIZED(g_window);
+    b8 prev_focused   = MAESTRO_WINDOW_IS_FOCUSED(g_window);
 
     while(!MAESTRO_WINDOW_IS_CLOSING(g_window)) {
         g_window->pump_messages(g_window);
@@ -355,8 +355,8 @@ static void test_window_run_until_close(void) {
         if(MAESTRO_WINDOW_WAS_RESIZED(g_window))
             printf("  WINDOW RESIZED   %ux%u\n", g_window->width, g_window->height);
 
-        uint8_t minimized = MAESTRO_WINDOW_IS_MINIMIZED(g_window);
-        uint8_t focused   = MAESTRO_WINDOW_IS_FOCUSED(g_window);
+        b8 minimized = MAESTRO_WINDOW_IS_MINIMIZED(g_window);
+        b8 focused   = MAESTRO_WINDOW_IS_FOCUSED(g_window);
         if(minimized != prev_minimized) {
             printf("  WINDOW %s\n", minimized ? "MINIMIZED" : "RESTORED");
             prev_minimized = minimized;
@@ -369,19 +369,19 @@ static void test_window_run_until_close(void) {
         /* ---- Hotkeys ------------------------------------------------ */
 
         if(MAESTRO_KEY_JUST_PRESSED(g_window, MAESTRO_KEY_C)) {
-            uint8_t captured = !MAESTRO_WINDOW_IS_MOUSE_CAPTURED(g_window);
+            b8 captured = !MAESTRO_WINDOW_IS_MOUSE_CAPTURED(g_window);
             g_window->set_mouse_capture(g_window, captured);
             printf("  CAPTURE          %s\n", captured ? "ON" : "OFF");
             update_state_title();
         }
         if(MAESTRO_KEY_JUST_PRESSED(g_window, MAESTRO_KEY_H)) {
-            uint8_t visible = MAESTRO_WINDOW_IS_CURSOR_HIDDEN(g_window);  /* toggle */
+            b8 visible = MAESTRO_WINDOW_IS_CURSOR_HIDDEN(g_window);  /* toggle */
             g_window->set_cursor_visible(g_window, visible);
             printf("  CURSOR           %s\n", visible ? "VISIBLE" : "HIDDEN");
             update_state_title();
         }
         if(MAESTRO_KEY_JUST_PRESSED(g_window, MAESTRO_KEY_F)) {
-            uint8_t fs = !MAESTRO_WINDOW_IS_FULLSCREEN(g_window);
+            b8 fs = !MAESTRO_WINDOW_IS_FULLSCREEN(g_window);
             g_window->set_fullscreen(g_window, fs);
             printf("  FULLSCREEN       %s\n", fs ? "ON" : "OFF");
             update_state_title();

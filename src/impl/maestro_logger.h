@@ -10,8 +10,8 @@ typedef struct MaestroLoggerHandlerImpl {
     MaestroLoggerHandler pub;
     
     char *p_buf;
-    uint64_t buf_index;
-    uint64_t buf_size;
+    u64 buf_index;
+    u64 buf_size;
 
     time_t last_time;
     char time[19];

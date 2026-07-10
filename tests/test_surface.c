@@ -19,21 +19,21 @@
 #if defined(_WIN32)
 #include <windows.h>
 #define test_sleep_ms(ms) Sleep(ms)
-static double test_wall_seconds(void) {
+static f64 test_wall_seconds(void) {
     static LARGE_INTEGER freq = {0};
     if(freq.QuadPart == 0) QueryPerformanceFrequency(&freq);
     LARGE_INTEGER now;
     QueryPerformanceCounter(&now);
-    return (double)now.QuadPart / (double)freq.QuadPart;
+    return (f64)now.QuadPart / (f64)freq.QuadPart;
 }
 #else
 #include <unistd.h>
 #include <time.h>
 #define test_sleep_ms(ms) usleep((ms) * 1000)
-static double test_wall_seconds(void) {
+static f64 test_wall_seconds(void) {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (double)ts.tv_sec + (double)ts.tv_nsec / 1e9;
+    return (f64)ts.tv_sec + (f64)ts.tv_nsec / 1e9;
 }
 #endif
 
@@ -65,7 +65,7 @@ static MaestroVulkanCoreHandler *g_vk           = NULL;
 static VkSurfaceKHR              g_surface      = VK_NULL_HANDLE;
 static HarpActorBase            *g_device_actor = NULL;
 
-static uint32_t     g_ext_count  = 0;
+static u32     g_ext_count  = 0;
 static const char **g_extensions = NULL;
 
 
@@ -157,7 +157,7 @@ static void test_window_init(void) {
     g_window->get_vulkan_extensions(g_window, &g_ext_count, g_extensions);
 
     printf("    window Vulkan extensions (%u):\n", g_ext_count);
-    for(uint32_t i = 0; i < g_ext_count; ++i)
+    for(u32 i = 0; i < g_ext_count; ++i)
         printf("        %s\n", g_extensions[i]);
 
     TEST_MARKER("WINDOW", "INIT_DONE");
@@ -272,8 +272,8 @@ static void test_device_create(void) {
         VK_VERSION_PATCH(props.apiVersion));
     printf("    queues created   : %u\n", actor->queue_count);
 
-    uint8_t found_present = 0;
-    for(uint32_t i = 0; i < actor->queue_count; ++i) {
+    b8 found_present = 0;
+    for(u32 i = 0; i < actor->queue_count; ++i) {
         MaestroVulkanQueue *q = &actor->queues[i];
         printf("    queues[%u]: family=%u flags=0x%x present=%u\n",
                i, q->family, q->flags, q->supports_present);
@@ -318,7 +318,7 @@ static void test_surface_query(void) {
         caps.minImageExtent.width, caps.minImageExtent.height,
         caps.maxImageExtent.width, caps.maxImageExtent.height);
 
-    uint32_t format_count = 0;
+    u32 format_count = 0;
     vkGetPhysicalDeviceSurfaceFormatsKHR(actor->physical_device, g_surface, &format_count, NULL);
     assert(format_count > 0);
 
@@ -327,11 +327,11 @@ static void test_surface_query(void) {
     vkGetPhysicalDeviceSurfaceFormatsKHR(actor->physical_device, g_surface, &format_count, formats);
 
     printf("    surface formats (%u):\n", format_count);
-    for(uint32_t i = 0; i < format_count; ++i)
+    for(u32 i = 0; i < format_count; ++i)
         printf("        format=%-4u  colorspace=%u\n", formats[i].format, formats[i].colorSpace);
     free(formats);
 
-    uint32_t mode_count = 0;
+    u32 mode_count = 0;
     vkGetPhysicalDeviceSurfacePresentModesKHR(actor->physical_device, g_surface, &mode_count, NULL);
     assert(mode_count > 0);
 
@@ -340,7 +340,7 @@ static void test_surface_query(void) {
     vkGetPhysicalDeviceSurfacePresentModesKHR(actor->physical_device, g_surface, &mode_count, modes);
 
     printf("    present modes (%u):\n", mode_count);
-    for(uint32_t i = 0; i < mode_count; ++i)
+    for(u32 i = 0; i < mode_count; ++i)
         printf("        %s\n", present_mode_str(modes[i]));
     free(modes);
 
@@ -352,12 +352,12 @@ static void test_surface_query(void) {
 /* STAY VISIBLE                                               */
 /* ========================================================= */
 
-static void test_window_stay_visible(double seconds) {
+static void test_window_stay_visible(f64 seconds) {
     TEST_MARKER("WINDOW", "STAY_VISIBLE");
     printf("    window + Vulkan active for ~%.1f seconds...\n", seconds);
 
     const int frame_ms = 16;
-    double start = test_wall_seconds();
+    f64 start = test_wall_seconds();
 
     while((test_wall_seconds() - start) < seconds) {
         g_window->pump_messages(g_window);

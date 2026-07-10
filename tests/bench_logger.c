@@ -26,14 +26,14 @@
 
 typedef struct {
     const char *label;
-    uint64_t    ns;
-    uint64_t    iterations;
+    u64    ns;
+    u64    iterations;
 } PerfResult;
 
 static PerfResult g_results[PERF_RESULT_MAX];
-static uint32_t   g_result_count = 0;
+static u32   g_result_count = 0;
 
-static void perf_record(const char *label, uint64_t ns, uint64_t iterations) {
+static void perf_record(const char *label, u64 ns, u64 iterations) {
     if(g_result_count >= PERF_RESULT_MAX)
         return;
 
@@ -52,11 +52,11 @@ static void perf_print_all(void) {
         "-----------"
     );
 
-    for(uint32_t i = 0; i < g_result_count; ++i) {
+    for(u32 i = 0; i < g_result_count; ++i) {
         PerfResult *r = &g_results[i];
 
-        double total_ms  = (double)r->ns / 1e6;
-        double per_op_ns = (double)r->ns / (double)r->iterations;
+        f64 total_ms  = (f64)r->ns / 1e6;
+        f64 per_op_ns = (f64)r->ns / (f64)r->iterations;
 
         fprintf(stderr, "  %-42s  %10.3f ms  %8.2f ns\n", r->label, total_ms, per_op_ns);
     }
@@ -66,10 +66,10 @@ static void perf_print_all(void) {
 /* TIMING                                                     */
 /* ========================================================= */
 
-static inline uint64_t perf_now_ns(void) {
+static inline u64 perf_now_ns(void) {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
+    return (u64)ts.tv_sec * 1000000000ULL + (u64)ts.tv_nsec;
 }
 
 /* ========================================================= */
@@ -175,9 +175,9 @@ static void teardown(void) {
 /* ========================================================= */
 
 static void bench_fallback_log_no_name(void) {
-    uint64_t t0 = perf_now_ns();
+    u64 t0 = perf_now_ns();
 
-    for(uint64_t i = 0; i < PERF_ITERATIONS; ++i)
+    for(u64 i = 0; i < PERF_ITERATIONS; ++i)
         g_logger->log(g_logger, MAESTRO_LOGGER_LEVEL_INFO, NULL, "hello world");
 
     fflush(stdout);
@@ -186,9 +186,9 @@ static void bench_fallback_log_no_name(void) {
 }
 
 static void bench_fallback_log_named(void) {
-    uint64_t t0 = perf_now_ns();
+    u64 t0 = perf_now_ns();
 
-    for(uint64_t i = 0; i < PERF_ITERATIONS; ++i)
+    for(u64 i = 0; i < PERF_ITERATIONS; ++i)
         g_logger->log(g_logger, MAESTRO_LOGGER_LEVEL_INFO, "renderer", "hello world");
 
     fflush(stdout);
@@ -197,9 +197,9 @@ static void bench_fallback_log_named(void) {
 }
 
 static void bench_fallback_logf(void) {
-    uint64_t t0 = perf_now_ns();
+    u64 t0 = perf_now_ns();
 
-    for(uint64_t i = 0; i < PERF_ITERATIONS_FMT; ++i)
+    for(u64 i = 0; i < PERF_ITERATIONS_FMT; ++i)
         g_logger->logf(g_logger, MAESTRO_LOGGER_LEVEL_INFO, "system", "frame %llu dt=%.4f", (unsigned long long)i, 0.016f);
 
     fflush(stdout);
@@ -208,9 +208,9 @@ static void bench_fallback_logf(void) {
 }
 
 static void bench_fallback_warn(void) {
-    uint64_t t0 = perf_now_ns();
+    u64 t0 = perf_now_ns();
 
-    for(uint64_t i = 0; i < PERF_ITERATIONS; ++i)
+    for(u64 i = 0; i < PERF_ITERATIONS; ++i)
         g_logger->log(g_logger, MAESTRO_LOGGER_LEVEL_WARN, "physics", "something is off");
 
     fflush(stdout);
@@ -223,9 +223,9 @@ static void bench_fallback_warn(void) {
 /* ========================================================= */
 
 static void bench_real_log_no_name(void) {
-    uint64_t t0 = perf_now_ns();
+    u64 t0 = perf_now_ns();
 
-    for(uint64_t i = 0; i < PERF_ITERATIONS; ++i)
+    for(u64 i = 0; i < PERF_ITERATIONS; ++i)
         g_logger->log(g_logger, MAESTRO_LOGGER_LEVEL_INFO, NULL, "hello world");
 
     g_logger->flush(g_logger);
@@ -234,9 +234,9 @@ static void bench_real_log_no_name(void) {
 }
 
 static void bench_real_log_named(void) {
-    uint64_t t0 = perf_now_ns();
+    u64 t0 = perf_now_ns();
 
-    for(uint64_t i = 0; i < PERF_ITERATIONS; ++i)
+    for(u64 i = 0; i < PERF_ITERATIONS; ++i)
         g_logger->log(g_logger, MAESTRO_LOGGER_LEVEL_INFO, "renderer", "hello world");
 
     g_logger->flush(g_logger);
@@ -245,9 +245,9 @@ static void bench_real_log_named(void) {
 }
 
 static void bench_real_logf(void) {
-    uint64_t t0 = perf_now_ns();
+    u64 t0 = perf_now_ns();
 
-    for(uint64_t i = 0; i < PERF_ITERATIONS_FMT; ++i)
+    for(u64 i = 0; i < PERF_ITERATIONS_FMT; ++i)
         g_logger->logf(g_logger, MAESTRO_LOGGER_LEVEL_INFO, "system", "frame %llu dt=%.4f", (unsigned long long)i, 0.016f);
 
     g_logger->flush(g_logger);
@@ -256,9 +256,9 @@ static void bench_real_logf(void) {
 }
 
 static void bench_real_warn(void) {
-    uint64_t t0 = perf_now_ns();
+    u64 t0 = perf_now_ns();
 
-    for(uint64_t i = 0; i < PERF_ITERATIONS; ++i)
+    for(u64 i = 0; i < PERF_ITERATIONS; ++i)
         g_logger->log(g_logger, MAESTRO_LOGGER_LEVEL_WARN, "physics", "something is off");
 
     g_logger->flush(g_logger);
@@ -267,9 +267,9 @@ static void bench_real_warn(void) {
 }
 
 static void bench_real_error_autoflush(void) {
-    uint64_t t0 = perf_now_ns();
+    u64 t0 = perf_now_ns();
 
-    for(uint64_t i = 0; i < PERF_ITERATIONS_ERROR; ++i)
+    for(u64 i = 0; i < PERF_ITERATIONS_ERROR; ++i)
         g_logger->log(g_logger, MAESTRO_LOGGER_LEVEL_ERROR, "core", "critical failure");
 
     perf_record("buffered log ERROR (autoflush each)", perf_now_ns() - t0, PERF_ITERATIONS_ERROR);

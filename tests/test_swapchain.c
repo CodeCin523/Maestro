@@ -52,7 +52,7 @@ static VkSurfaceKHR                   g_surface      = VK_NULL_HANDLE;
 static HarpActorBase                 *g_device_actor = NULL;
 static MaestroVulkanSwapchainHandler *g_swapchain    = NULL;
 
-static uint32_t     g_ext_count  = 0;
+static u32     g_ext_count  = 0;
 static const char **g_extensions = NULL;
 
 /* Frame objects shared by the acquire/present tests. */
@@ -255,7 +255,7 @@ static void test_swapchain_get_handler(void) {
     assert(g_swapchain->recreate != NULL);
 
     /* Calls on an uninitialized handler must fail cleanly. */
-    uint32_t image_index = 0;
+    u32 image_index = 0;
     assert(g_swapchain->acquire(g_swapchain, VK_NULL_HANDLE, &image_index, NULL) == HARP_RESULT_INVALID_STATE);
     assert(g_swapchain->present(g_swapchain, VK_NULL_HANDLE, VK_NULL_HANDLE, 0, NULL) == HARP_RESULT_INVALID_STATE);
     assert(g_swapchain->recreate(g_swapchain, NULL, 0, 0, VK_PRESENT_MODE_FIFO_KHR) == HARP_RESULT_INVALID_STATE);
@@ -325,7 +325,7 @@ static void test_swapchain_init(void) {
     assert(g_swapchain->extent.width  > 0);
     assert(g_swapchain->extent.height > 0);
 
-    for(uint32_t i = 0; i < g_swapchain->image_count; ++i) {
+    for(u32 i = 0; i < g_swapchain->image_count; ++i) {
         assert(g_swapchain->images[i] != VK_NULL_HANDLE);
         assert(g_swapchain->views[i]  != VK_NULL_HANDLE);
     }
@@ -402,7 +402,7 @@ static void test_swapchain_frame(const char *phase) {
     MaestroVulkanDeviceActor *actor = HARP_ACTOR_AS(MaestroVulkanDeviceActor, g_device_actor);
 
     VkQueue present_queue = VK_NULL_HANDLE;
-    for(uint32_t i = 0; i < actor->queue_count; ++i) {
+    for(u32 i = 0; i < actor->queue_count; ++i) {
         if(actor->queues[i].supports_present) {
             present_queue = actor->queues[i].queue;
             break;
@@ -410,8 +410,8 @@ static void test_swapchain_frame(const char *phase) {
     }
     assert(present_queue != VK_NULL_HANDLE);
 
-    uint32_t image_index = UINT32_MAX;
-    uint8_t  suboptimal  = 0;
+    u32 image_index = UINT32_MAX;
+    b8  suboptimal  = 0;
     assert_harp(
         g_swapchain->acquire(g_swapchain, g_sem_acquire, &image_index, &suboptimal),
         "acquire swapchain image"
@@ -519,7 +519,7 @@ static void test_swapchain_recreate(void) {
     assert(g_swapchain->extent.width  > 0);
     assert(g_swapchain->extent.height > 0);
 
-    for(uint32_t i = 0; i < g_swapchain->image_count; ++i) {
+    for(u32 i = 0; i < g_swapchain->image_count; ++i) {
         assert(g_swapchain->images[i] != VK_NULL_HANDLE);
         assert(g_swapchain->views[i]  != VK_NULL_HANDLE);
     }

@@ -19,7 +19,7 @@ extern "C" {
 // 255 is the practical name limit on both Linux and Windows.
 #define MAESTRO_PATH_NAME_MAX 256
 
-typedef uint8_t MaestroPathBase;
+typedef u8 MaestroPathBase;
 enum {
     MAESTRO_PATH_BASE_DEFAULT = 0,  // creator-provided root; falls back to the exe directory
     MAESTRO_PATH_BASE_EXE,          // directory of the running executable
@@ -29,7 +29,7 @@ enum {
     MAESTRO_PATH_BASE_COUNT
 };
 
-typedef uint8_t MaestroPathEntryFlags;
+typedef u8 MaestroPathEntryFlags;
 enum {
     MAESTRO_PATH_ENTRY_FILE  = 1 << 0,
     MAESTRO_PATH_ENTRY_DIR   = 1 << 1,
@@ -37,8 +37,8 @@ enum {
 };
 
 typedef struct MaestroPathInfo {
-    uint64_t size;   // bytes; 0 for directories
-    int64_t  mtime;  // last modification, unix seconds
+    u64 size;   // bytes; 0 for directories
+    i64  mtime;  // last modification, unix seconds
     MaestroPathEntryFlags flags;
 } MaestroPathInfo;
 
@@ -71,15 +71,15 @@ struct MaestroPathHandler {
     // Joins bases[base] + relative into buf; relative uses forward slashes,
     // "." and ".." collapse. Returns the length written (excluding the NUL),
     // 0 if buf is too small or relative escapes the base.
-    size_t (*make)(MaestroPathHandler *h, MaestroPathBase base, char *buf, size_t buf_size, const char *relative);
-    size_t (*makef)(MaestroPathHandler *h, MaestroPathBase base, char *buf, size_t buf_size, const char *fmt, ...);
+    usize (*make)(MaestroPathHandler *h, MaestroPathBase base, char *buf, usize buf_size, const char *relative);
+    usize (*makef)(MaestroPathHandler *h, MaestroPathBase base, char *buf, usize buf_size, const char *fmt, ...);
 
     // stat. Symlinks are followed; fails if nothing exists at path.
     HarpResult (*info)(MaestroPathHandler *h, const char *path, MaestroPathInfo *out_info);
 
     // get_actors-style two-call enumeration of the entries whose flags
     // intersect filter. "." and ".." are never reported; order is unspecified.
-    HarpResult (*enumerate)(MaestroPathHandler *h, const char *path, MaestroPathEntryFlags filter, uint32_t *count, MaestroPathEntry *entries);
+    HarpResult (*enumerate)(MaestroPathHandler *h, const char *path, MaestroPathEntryFlags filter, u32 *count, MaestroPathEntry *entries);
 
     // Resolved at init, absolute, NUL-terminated, no trailing separator.
     // CONFIG and SAVE are created on disk during init if missing.

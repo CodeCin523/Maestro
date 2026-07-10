@@ -8,7 +8,7 @@ typedef struct MaestroVulkanCoreHandlerImpl {
     MaestroVulkanCoreHandler pub;
 
     VkPhysicalDevice *devices;
-    uint32_t device_count;
+    u32 device_count;
 } MaestroVulkanCoreHandlerImpl;
 
 typedef struct MaestroVulkanSwapchainHandlerImpl {
@@ -20,7 +20,7 @@ typedef struct MaestroVulkanSwapchainHandlerImpl {
 } MaestroVulkanSwapchainHandlerImpl;
 
 
-int32_t default_device_score(VkPhysicalDevice device);
+i32 default_device_score(VkPhysicalDevice device);
 
 HarpResult vulkan_create_buffer(MaestroVulkanDeviceActor *device, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags mem_props, VkBuffer *out_buffer, VkDeviceMemory *out_memory);
 void vulkan_destroy_buffer(MaestroVulkanDeviceActor *device, VkBuffer buffer, VkDeviceMemory memory);
@@ -36,9 +36,9 @@ HarpResult destroy_vulkan_device(HarpCoreHandler *core_handler, HarpActorBase *b
 HarpResult patch_vulkan_device(HarpCoreHandler *core_handler, HarpActorBase *base);
 
 
-HarpResult swapchain_acquire(MaestroVulkanSwapchainHandler *h, VkSemaphore signal_semaphore, uint32_t *out_image_index, b8 *out_suboptimal);
-HarpResult swapchain_present(MaestroVulkanSwapchainHandler *h, VkQueue queue, VkSemaphore wait_semaphore, uint32_t image_index, b8 *out_suboptimal);
-HarpResult swapchain_recreate(MaestroVulkanSwapchainHandler *h, MaestroVulkanDeviceActor *device, uint32_t width, uint32_t height, VkPresentModeKHR present_mode);
+HarpResult swapchain_acquire(MaestroVulkanSwapchainHandler *h, VkSemaphore signal_semaphore, u32 *out_image_index, b8 *out_suboptimal);
+HarpResult swapchain_present(MaestroVulkanSwapchainHandler *h, VkQueue queue, VkSemaphore wait_semaphore, u32 image_index, b8 *out_suboptimal);
+HarpResult swapchain_recreate(MaestroVulkanSwapchainHandler *h, MaestroVulkanDeviceActor *device, u32 width, u32 height, VkPresentModeKHR present_mode);
 
 HarpResult init_vulkan_swapchain(HarpCoreHandler *core_handler, HarpHandlerBase *base, HarpCreatorBase *creator);
 HarpResult term_vulkan_swapchain(HarpCoreHandler *core_handler, HarpHandlerBase *base);

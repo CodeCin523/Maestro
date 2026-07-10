@@ -25,7 +25,7 @@ typedef struct MaestroWindowHandlerImpl {
 
     /* ground-truth held state, persists across frames; keys[] is derived from it  */
     b8 held[MAESTRO_KEY_COUNT];
-    uint8_t held_mouse;
+    u8 held_mouse;
 
 #if HARP_PLATFORM_WINDOWS
     HINSTANCE h_instance;
@@ -36,10 +36,10 @@ typedef struct MaestroWindowHandlerImpl {
        acceleration. raw_input is 0 when registration failed. last_abs
        tracks absolute-mode devices (tablets, RDP) to derive deltas. */
     b8 raw_input;
-    int32_t raw_accum_x;
-    int32_t raw_accum_y;
-    int32_t last_abs_x;
-    int32_t last_abs_y;
+    i32 raw_accum_x;
+    i32 raw_accum_y;
+    i32 last_abs_x;
+    i32 last_abs_y;
     b8 has_last_abs;
 #elif HARP_PLATFORM_LINUX
     Display *display;
@@ -50,9 +50,9 @@ typedef struct MaestroWindowHandlerImpl {
 
     /* XInput2 raw motion: per-device deltas for captured mode, independent of
        the cursor position. opcode is 0 when the extension is unavailable. */
-    uint8_t xi2_opcode;
-    double  raw_accum_x;
-    double  raw_accum_y;
+    u8 xi2_opcode;
+    f64  raw_accum_x;
+    f64  raw_accum_y;
 
     xcb_atom_t wm_protocols;
     xcb_atom_t wm_delete_win;
@@ -71,11 +71,11 @@ void window_set_mouse_capture(MaestroWindowHandler *h, b8 captured);
 void window_set_cursor_visible(MaestroWindowHandler *h, b8 visible);
 void window_set_title(MaestroWindowHandler *h, const char *title);
 void window_set_title_extension(MaestroWindowHandler *h, const char *extension);
-void window_set_size(MaestroWindowHandler *h, uint32_t width, uint32_t height);
-void window_set_position(MaestroWindowHandler *h, int32_t x, int32_t y);
+void window_set_size(MaestroWindowHandler *h, u32 width, u32 height);
+void window_set_position(MaestroWindowHandler *h, i32 x, i32 y);
 void window_set_fullscreen(MaestroWindowHandler *h, b8 fullscreen);
 void window_request_attention(MaestroWindowHandler *h);
-void window_get_vulkan_extensions(MaestroWindowHandler *h, uint32_t *out_count, const char **out_extensions);
+void window_get_vulkan_extensions(MaestroWindowHandler *h, u32 *out_count, const char **out_extensions);
 HarpResult window_create_vulkan_surface(MaestroWindowHandler *h, VkInstance instance, VkSurfaceKHR *out_surface);
 
 HarpResult init_window(HarpCoreHandler *core_handler, HarpHandlerBase *base, HarpCreatorBase *creator);

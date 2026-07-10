@@ -47,10 +47,10 @@ static const char LOGGER_LEVEL_STR[5][4] = {
 /*  FORMATTERS                                                                      */
 /* ================================================================================ */
 
-static inline uint64_t logger_write_timestamp(
+static inline u64 logger_write_timestamp(
     MaestroLoggerHandlerImpl *impl,
     char *buf,
-    uint64_t index
+    u64 index
 ) {
     time_t now;
     time(&now);
@@ -60,8 +60,8 @@ static inline uint64_t logger_write_timestamp(
 
         struct tm *t = localtime(&now);
 
-        uint16_t year = t->tm_year + 1900;
-        uint16_t day  = t->tm_yday + 1;
+        u16 year = t->tm_year + 1900;
+        u16 day  = t->tm_yday + 1;
 
         char *tmp = impl->time;
 
@@ -100,9 +100,9 @@ static inline uint64_t logger_write_timestamp(
     return index + LOGGER_TIME_SIZE;
 }
 
-static inline uint64_t logger_write_level(
+static inline u64 logger_write_level(
     char *buf,
-    uint64_t index,
+    u64 index,
     MaestroLoggerLevel level
 ) {
     const char *lvl = LOGGER_LEVEL_STR[level];
@@ -117,10 +117,10 @@ static inline uint64_t logger_write_level(
     return index;
 }
 
-static inline uint64_t logger_write_prefix(
+static inline u64 logger_write_prefix(
     MaestroLoggerHandlerImpl *impl,
     char *buf,
-    uint64_t index,
+    u64 index,
     MaestroLoggerLevel level,
     const HarpName name
 ) {
@@ -130,7 +130,7 @@ static inline uint64_t logger_write_prefix(
     buf[index++] = ' ';
 
     if(name) {
-        size_t len = strlen(name);
+        usize len = strlen(name);
 
         buf[index++] = '[';
         memcpy(&buf[index], name, len);
@@ -195,7 +195,7 @@ void logger_log(MaestroLoggerHandler *h, const MaestroLoggerLevel level, const H
         return;
 
     char *buf = impl->p_buf;
-    uint64_t i = impl->buf_index;
+    u64 i = impl->buf_index;
 
     if(impl->buf_size - i < LOGGER_FIXED_SIZE + strlen(msg) + LOGGER_MIN_FREE_SPACE) {
         logger_flush(h);
@@ -204,8 +204,8 @@ void logger_log(MaestroLoggerHandler *h, const MaestroLoggerLevel level, const H
 
     i = logger_write_prefix(impl, buf, i, level, name);
 
-    size_t len = strlen(msg);
-    size_t cap = impl->buf_size - i;
+    usize len = strlen(msg);
+    usize cap = impl->buf_size - i;
 
     if(len >= cap)
         len = cap - 1;
@@ -226,7 +226,7 @@ void logger_logf(MaestroLoggerHandler *h, const MaestroLoggerLevel level, const 
         return;
 
     char *buf = impl->p_buf;
-    uint64_t i = impl->buf_index;
+    u64 i = impl->buf_index;
 
     if(impl->buf_size - i < LOGGER_FIXED_SIZE + LOGGER_MIN_FREE_SPACE) {
         logger_flush(h);
@@ -235,7 +235,7 @@ void logger_logf(MaestroLoggerHandler *h, const MaestroLoggerLevel level, const 
 
     i = logger_write_prefix(impl, buf, i, level, name);
 
-    size_t cap = impl->buf_size - i;
+    usize cap = impl->buf_size - i;
 
     va_list args;
     va_start(args, fmt);
@@ -245,10 +245,10 @@ void logger_logf(MaestroLoggerHandler *h, const MaestroLoggerLevel level, const 
     va_end(args);
 
     if(written > 0) {
-        if((size_t)written >= cap)
+        if((usize)written >= cap)
             i = impl->buf_size - 1;
         else
-            i += (size_t)written;
+            i += (usize)written;
     }
 
     buf[i++] = '\n';

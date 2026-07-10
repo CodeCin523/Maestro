@@ -192,7 +192,7 @@ static void test_formatted_log(void) {
     TEST_MARKER("LOG", "FORMATTED");
 
     g_logger->logf(g_logger, MAESTRO_LOGGER_LEVEL_INFO,  "math",   "result: %d", 42);
-    g_logger->logf(g_logger, MAESTRO_LOGGER_LEVEL_DEBUG, "memory", "allocated %zu bytes at %p", (size_t)1024, (void*)0xDEAD);
+    g_logger->logf(g_logger, MAESTRO_LOGGER_LEVEL_DEBUG, "memory", "allocated %zu bytes at %p", (usize)1024, (void*)0xDEAD);
     g_logger->logf(g_logger, MAESTRO_LOGGER_LEVEL_WARN,  NULL,     "frame time: %.2f ms", 16.67f);
 
     TEST_MARKER("LOG", "FORMATTED_DONE");

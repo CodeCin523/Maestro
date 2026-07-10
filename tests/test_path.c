@@ -145,7 +145,7 @@ static void test_bases(void) {
         const char *base = g_path->bases[b];
         assert(base[0] != '\0');
         /* no trailing separator */
-        size_t len = strlen(base);
+        usize len = strlen(base);
         if(len > 1)
             assert(base[len - 1] != '/' && base[len - 1] != '\\');
         printf("  base[%u] = %s\n", b, base);
@@ -183,7 +183,7 @@ static void test_make(void) {
     char expect[MAESTRO_PATH_MAX];
 
     /* simple join */
-    size_t len = g_path->make(g_path, MAESTRO_PATH_BASE_CWD, buf, sizeof(buf), "assets/something.txt");
+    usize len = g_path->make(g_path, MAESTRO_PATH_BASE_CWD, buf, sizeof(buf), "assets/something.txt");
     assert(len > 0 && len == strlen(buf));
 #if HARP_PLATFORM_WINDOWS
     snprintf(expect, sizeof(expect), "%s\\assets\\something.txt", cwd);
@@ -251,7 +251,7 @@ static void remove_test_file(const char *dir, const char *name) {
 static void test_playground_setup(void) {
     TEST_MARKER("PATH", "PLAYGROUND_SETUP");
 
-    size_t len = g_path->make(g_path, MAESTRO_PATH_BASE_CWD,
+    usize len = g_path->make(g_path, MAESTRO_PATH_BASE_CWD,
                               g_test_dir, sizeof(g_test_dir), TEST_DIR_NAME);
     assert(len > 0);
 
@@ -297,7 +297,7 @@ static void test_info(void) {
 static void test_enumerate(void) {
     TEST_MARKER("PATH", "ENUMERATE");
 
-    uint32_t count = 0;
+    u32 count = 0;
 
     /* count pass: 2 files */
     assert_harp(g_path->enumerate(g_path, g_test_dir, MAESTRO_PATH_ENTRY_FILE, &count, NULL),
@@ -318,8 +318,8 @@ static void test_enumerate(void) {
                 "fill pass failed");
     assert(count == 3);
 
-    uint8_t seen_a = 0, seen_b = 0, seen_sub = 0;
-    for(uint32_t i = 0; i < count; ++i) {
+    b8 seen_a = 0, seen_b = 0, seen_sub = 0;
+    for(u32 i = 0; i < count; ++i) {
         if(strcmp(entries[i].name, "a.txt") == 0) {
             assert(entries[i].flags == MAESTRO_PATH_ENTRY_FILE);
             seen_a = 1;

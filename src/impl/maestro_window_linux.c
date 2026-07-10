@@ -59,7 +59,7 @@ static MaestroKey keysym_to_maestro(KeySym sym) {
 // reply, which is fine since it only happens during init.
 static xcb_atom_t get_atom(xcb_connection_t *conn, const char *name) {
     xcb_intern_atom_cookie_t cookie = xcb_intern_atom(
-        conn, 0, (uint16_t)strlen(name), name);
+        conn, 0, (u16)strlen(name), name);
 
     xcb_intern_atom_reply_t *reply = xcb_intern_atom_reply(conn, cookie, NULL);
     if(!reply) return XCB_ATOM_NONE;
@@ -76,7 +76,7 @@ static void window_apply_title(MaestroWindowHandlerImpl *impl) {
     else
         snprintf(buf, sizeof(buf), "%s", impl->title_base);
 
-    uint32_t len = (uint32_t)strlen(buf);
+    u32 len = (u32)strlen(buf);
 
     if(impl->net_wm_name != XCB_ATOM_NONE && impl->utf8_string != XCB_ATOM_NONE) {
         xcb_change_property(impl->connection, XCB_PROP_MODE_REPLACE, impl->window,
@@ -136,10 +136,10 @@ static void linux_apply_mouse_capture(MaestroWindowHandlerImpl *impl) {
     // Warp to center so the next pump starts with a zero delta.
     xcb_warp_pointer(impl->connection, XCB_NONE, impl->window,
         0, 0, 0, 0,
-        (int16_t)(h->width  / 2),
-        (int16_t)(h->height / 2));
-    h->mouse_x      = (int32_t)(h->width  / 2);
-    h->mouse_y      = (int32_t)(h->height / 2);
+        (i16)(h->width  / 2),
+        (i16)(h->height / 2));
+    h->mouse_x      = (i32)(h->width  / 2);
+    h->mouse_y      = (i32)(h->height / 2);
     h->prev_mouse_x = h->mouse_x;
     h->prev_mouse_y = h->mouse_y;
 
@@ -158,14 +158,14 @@ static const char *const WINDOW_VULKAN_EXTENSIONS[] = {
     "VK_KHR_surface",
     "VK_KHR_xcb_surface"
 };
-static const uint32_t WINDOW_VULKAN_EXTENSION_COUNT = 2;
+static const u32 WINDOW_VULKAN_EXTENSION_COUNT = 2;
 
-void window_get_vulkan_extensions(MaestroWindowHandler *h, uint32_t *out_count, const char **out_extensions) {
+void window_get_vulkan_extensions(MaestroWindowHandler *h, u32 *out_count, const char **out_extensions) {
     HARP_UNUSED(h);
     if(!out_count) return;
     *out_count = WINDOW_VULKAN_EXTENSION_COUNT;
     if(out_extensions) {
-        for(uint32_t i = 0; i < WINDOW_VULKAN_EXTENSION_COUNT; ++i)
+        for(u32 i = 0; i < WINDOW_VULKAN_EXTENSION_COUNT; ++i)
             out_extensions[i] = WINDOW_VULKAN_EXTENSIONS[i];
     }
 }
@@ -203,8 +203,8 @@ void window_pump_messages(MaestroWindowHandler *h) {
     h->scroll    = 0;
     h->scroll_x  = 0;
 
-    for(uint32_t i = 0; i < MAESTRO_KEY_COUNT; ++i)
-        h->keys[i] = (uint8_t)(((h->keys[i] & MAESTRO_INPUT_CURRENT) << 1) | handler->held[i]);
+    for(u32 i = 0; i < MAESTRO_KEY_COUNT; ++i)
+        h->keys[i] = (u8)(((h->keys[i] & MAESTRO_INPUT_CURRENT) << 1) | handler->held[i]);
 
     h->mouse_buttons = (MaestroMouseBits)(((h->mouse_buttons & 0x1Fu) << 5) | handler->held_mouse);
 
@@ -212,8 +212,8 @@ void window_pump_messages(MaestroWindowHandler *h) {
     // gathered during this pump. mouse_x starts at the center too; a stale
     // value would otherwise repeat the previous delta on quiet frames.
     if(h->flags & MAESTRO_WINDOW_MOUSE_CAPTURED) {
-        h->prev_mouse_x = (int32_t)(h->width  / 2);
-        h->prev_mouse_y = (int32_t)(h->height / 2);
+        h->prev_mouse_x = (i32)(h->width  / 2);
+        h->prev_mouse_y = (i32)(h->height / 2);
         h->mouse_x = h->prev_mouse_x;
         h->mouse_y = h->prev_mouse_y;
     } else {
@@ -282,9 +282,9 @@ void window_pump_messages(MaestroWindowHandler *h) {
                 if(!reply) break;
 
                 xcb_atom_t *atoms = xcb_get_property_value(reply);
-                uint32_t    count = (uint32_t)(xcb_get_property_value_length(reply) / sizeof(xcb_atom_t));
+                u32    count = (u32)(xcb_get_property_value_length(reply) / sizeof(xcb_atom_t));
                 b8          fs    = 0;
-                for(uint32_t i = 0; i < count; ++i) {
+                for(u32 i = 0; i < count; ++i) {
                     if(atoms[i] == handler->net_wm_state_fullscreen) { fs = 1; break; }
                 }
                 free(reply);
@@ -327,15 +327,15 @@ void window_pump_messages(MaestroWindowHandler *h) {
                 // when the compositor ignores warps or the pointer leaves the
                 // window. Axes 0 and 1 are x and y; higher axes are scroll.
                 xcb_input_raw_button_press_event_t *raw = (xcb_input_raw_button_press_event_t *)event;
-                uint32_t *mask                = xcb_input_raw_button_press_valuator_mask(raw);
+                u32 *mask                = xcb_input_raw_button_press_valuator_mask(raw);
                 xcb_input_fp3232_t *values    = xcb_input_raw_button_press_axisvalues_raw(raw);
 
-                uint32_t value_index = 0;
-                for(uint32_t axis = 0; axis < raw->valuators_len * 32u && axis <= 1; ++axis) {
+                u32 value_index = 0;
+                for(u32 axis = 0; axis < raw->valuators_len * 32u && axis <= 1; ++axis) {
                     if(!(mask[axis / 32] & (1u << (axis % 32))))
                         continue;
-                    double v = (double)values[value_index].integral +
-                               (double)values[value_index].frac / 4294967296.0;
+                    f64 v = (f64)values[value_index].integral +
+                               (f64)values[value_index].frac / 4294967296.0;
                     if(axis == 0) handler->raw_accum_x += v;
                     else          handler->raw_accum_y += v;
                     ++value_index;
@@ -358,7 +358,7 @@ void window_pump_messages(MaestroWindowHandler *h) {
                     }
                 }
 
-                uint8_t mask = 0;
+                u8 mask = 0;
                 switch(bp->detail) {
                     case 1: mask = MAESTRO_MOUSE_LEFT;    break;
                     case 2: mask = MAESTRO_MOUSE_MIDDLE;  break;
@@ -387,8 +387,8 @@ void window_pump_messages(MaestroWindowHandler *h) {
     // unfocused, capture is suspended then.
     if((h->flags & MAESTRO_WINDOW_MOUSE_CAPTURED) && (h->flags & MAESTRO_WINDOW_FOCUSED)) {
         if(handler->xi2_opcode) {
-            int32_t dx = (int32_t)handler->raw_accum_x;
-            int32_t dy = (int32_t)handler->raw_accum_y;
+            i32 dx = (i32)handler->raw_accum_x;
+            i32 dy = (i32)handler->raw_accum_y;
             handler->raw_accum_x -= dx;
             handler->raw_accum_y -= dy;
             h->mouse_x = h->prev_mouse_x + dx;
@@ -396,8 +396,8 @@ void window_pump_messages(MaestroWindowHandler *h) {
         }
         xcb_warp_pointer(handler->connection, XCB_NONE, handler->window,
             0, 0, 0, 0,
-            (int16_t)(h->width  / 2),
-            (int16_t)(h->height / 2));
+            (i16)(h->width  / 2),
+            (i16)(h->height / 2));
         xcb_flush(handler->connection);
     }
 }
@@ -413,7 +413,7 @@ void window_set_mouse_capture(MaestroWindowHandler *h, b8 captured) {
         xcb_ungrab_pointer(impl->connection, XCB_CURRENT_TIME);
 
         // Restore cursor appearance to match the current visibility flag.
-        uint32_t cursor = (h->flags & MAESTRO_WINDOW_CURSOR_HIDDEN)
+        u32 cursor = (h->flags & MAESTRO_WINDOW_CURSOR_HIDDEN)
             ? impl->blank_cursor
             : XCB_CURSOR_NONE;
         xcb_change_window_attributes(impl->connection, impl->window, XCB_CW_CURSOR, &cursor);
@@ -436,7 +436,7 @@ void window_set_cursor_visible(MaestroWindowHandler *h, b8 visible) {
         impl->blank_cursor = create_blank_cursor(impl);
 
     if(!(h->flags & MAESTRO_WINDOW_MOUSE_CAPTURED)) {
-        uint32_t cursor = visible ? XCB_CURSOR_NONE : impl->blank_cursor;
+        u32 cursor = visible ? XCB_CURSOR_NONE : impl->blank_cursor;
         xcb_change_window_attributes(impl->connection, impl->window, XCB_CW_CURSOR, &cursor);
         xcb_flush(impl->connection);
     }
@@ -459,10 +459,10 @@ void window_set_title_extension(MaestroWindowHandler *h, const char *extension) 
     window_apply_title(impl);
 }
 
-void window_set_size(MaestroWindowHandler *h, uint32_t width, uint32_t height) {
+void window_set_size(MaestroWindowHandler *h, u32 width, u32 height) {
     if(!HARP_HANDLER_IS_VALID(h)) return;
     MaestroWindowHandlerImpl *impl = (MaestroWindowHandlerImpl *)h;
-    uint32_t values[] = { width, height };
+    u32 values[] = { width, height };
     xcb_configure_window(impl->connection, impl->window,
         XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT, values);
     xcb_flush(impl->connection);
@@ -470,10 +470,10 @@ void window_set_size(MaestroWindowHandler *h, uint32_t width, uint32_t height) {
     h->height = height;
 }
 
-void window_set_position(MaestroWindowHandler *h, int32_t x, int32_t y) {
+void window_set_position(MaestroWindowHandler *h, i32 x, i32 y) {
     if(!HARP_HANDLER_IS_VALID(h)) return;
     MaestroWindowHandlerImpl *impl = (MaestroWindowHandlerImpl *)h;
-    uint32_t values[] = { (uint32_t)x, (uint32_t)y };
+    u32 values[] = { (u32)x, (u32)y };
     xcb_configure_window(impl->connection, impl->window,
         XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y, values);
     xcb_flush(impl->connection);
@@ -576,7 +576,7 @@ HarpResult init_window(HarpCoreHandler *core_handler, HarpHandlerBase *base, Har
 
     handler->window = xcb_generate_id(handler->connection);
 
-    uint32_t event_mask =
+    u32 event_mask =
         XCB_EVENT_MASK_KEY_PRESS |
         XCB_EVENT_MASK_KEY_RELEASE |
         XCB_EVENT_MASK_BUTTON_PRESS |
@@ -586,8 +586,8 @@ HarpResult init_window(HarpCoreHandler *core_handler, HarpHandlerBase *base, Har
         XCB_EVENT_MASK_FOCUS_CHANGE |
         XCB_EVENT_MASK_PROPERTY_CHANGE;
 
-    uint32_t value_list[] = { handler->screen->black_pixel, event_mask };
-    uint32_t value_mask = XCB_CW_BACK_PIXEL | XCB_CW_EVENT_MASK;
+    u32 value_list[] = { handler->screen->black_pixel, event_mask };
+    u32 value_mask = XCB_CW_BACK_PIXEL | XCB_CW_EVENT_MASK;
 
     xcb_create_window(
         handler->connection,
@@ -595,7 +595,7 @@ HarpResult init_window(HarpCoreHandler *core_handler, HarpHandlerBase *base, Har
         handler->window,
         handler->screen->root,
         0, 0,
-        (uint16_t)window_creator.width, (uint16_t)window_creator.height,
+        (u16)window_creator.width, (u16)window_creator.height,
         0,
         XCB_WINDOW_CLASS_INPUT_OUTPUT,
         handler->screen->root_visual,
@@ -644,7 +644,7 @@ HarpResult init_window(HarpCoreHandler *core_handler, HarpHandlerBase *base, Har
             if(xi_version->major_version >= 2) {
                 struct {
                     xcb_input_event_mask_t head;
-                    uint32_t mask;
+                    u32 mask;
                 } mask = {
                     .head = { .deviceid = XCB_INPUT_DEVICE_ALL_MASTER, .mask_len = 1 },
                     .mask = XCB_INPUT_XI_EVENT_MASK_RAW_MOTION

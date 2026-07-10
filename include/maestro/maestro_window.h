@@ -15,7 +15,7 @@ extern "C" {
 /*  TYPEDEF                                                                         */
 /* ================================================================================ */
 
-typedef uint16_t MaestroKey;
+typedef u16 MaestroKey;
 enum {
     MAESTRO_KEY_A, MAESTRO_KEY_B, MAESTRO_KEY_C, MAESTRO_KEY_D,
     MAESTRO_KEY_E, MAESTRO_KEY_F, MAESTRO_KEY_G, MAESTRO_KEY_H,
@@ -49,14 +49,14 @@ enum {
 };
 
 // Per-key byte layout: bit 0 = pressed this frame, bit 1 = pressed previous frame
-typedef uint8_t MaestroInputBits;
+typedef u8 MaestroInputBits;
 enum {
     MAESTRO_INPUT_CURRENT  = 1 << 0,
     MAESTRO_INPUT_PREVIOUS = 1 << 1,
 };
 
 // Mouse button bits — current state in bits 0-4, previous state in bits 5-9
-typedef uint16_t MaestroMouseBits;
+typedef u16 MaestroMouseBits;
 enum {
     MAESTRO_MOUSE_LEFT    = 1 << 0,
     MAESTRO_MOUSE_RIGHT   = 1 << 1,
@@ -66,7 +66,7 @@ enum {
 };
 
 // Window state flags packed into a single byte
-typedef uint8_t MaestroWindowFlags;
+typedef u8 MaestroWindowFlags;
 enum {
     MAESTRO_WINDOW_CLOSE_REQUESTED = 1 << 0,  // close requested by OS or user
     MAESTRO_WINDOW_MINIMIZED       = 1 << 1,
@@ -92,8 +92,8 @@ struct MaestroWindowCreator {
     HarpCreatorBase _base;
 
     const char *title;
-    uint32_t    width;
-    uint32_t    height;
+    u32    width;
+    u32    height;
 };
 
 struct MaestroWindowHandler {
@@ -104,26 +104,26 @@ struct MaestroWindowHandler {
     void (*set_cursor_visible)(MaestroWindowHandler *h, b8 visible);
     void (*set_title)(MaestroWindowHandler *h, const char *title);
     void (*set_title_extension)(MaestroWindowHandler *h, const char *extension);
-    void (*set_size)(MaestroWindowHandler *h, uint32_t width, uint32_t height);
-    void (*set_position)(MaestroWindowHandler *h, int32_t x, int32_t y);
+    void (*set_size)(MaestroWindowHandler *h, u32 width, u32 height);
+    void (*set_position)(MaestroWindowHandler *h, i32 x, i32 y);
     void (*set_fullscreen)(MaestroWindowHandler *h, b8 fullscreen);
     void (*request_attention)(MaestroWindowHandler *h);
-    void (*get_vulkan_extensions)(MaestroWindowHandler *h, uint32_t *out_count, const char **out_extensions);
+    void (*get_vulkan_extensions)(MaestroWindowHandler *h, u32 *out_count, const char **out_extensions);
     HarpResult (*create_vulkan_surface)(MaestroWindowHandler *h, VkInstance instance, VkSurfaceKHR *out_surface);
 
     MaestroInputBits keys[MAESTRO_KEY_COUNT];
     MaestroMouseBits mouse_buttons;
 
-    int32_t mouse_x;
-    int32_t mouse_y;
-    int32_t prev_mouse_x;
-    int32_t prev_mouse_y;
-    int32_t scroll;     // vertical scroll delta this pump; positive = up / forward
-    int32_t scroll_x;   // horizontal scroll delta this pump; positive = right
+    i32 mouse_x;
+    i32 mouse_y;
+    i32 prev_mouse_x;
+    i32 prev_mouse_y;
+    i32 scroll;     // vertical scroll delta this pump; positive = up / forward
+    i32 scroll_x;   // horizontal scroll delta this pump; positive = right
 
     MaestroWindowFlags flags;
-    uint32_t width;
-    uint32_t height;
+    u32 width;
+    u32 height;
 };
 
 
@@ -141,8 +141,8 @@ struct MaestroWindowHandler {
 #define MAESTRO_MOUSE_WAS_DOWN(h, btn) (!!(((h)->mouse_buttons) & ((MaestroMouseBits)((btn) << 5))))
 #define MAESTRO_MOUSE_WAS_UP(h, btn)    (!(((h)->mouse_buttons) & ((MaestroMouseBits)((btn) << 5))))
 
-#define MAESTRO_MOUSE_X_NORM(h)  ((float)(h)->mouse_x / (float)(h)->width)
-#define MAESTRO_MOUSE_Y_NORM(h)  ((float)(h)->mouse_y / (float)(h)->height)
+#define MAESTRO_MOUSE_X_NORM(h)  ((f32)(h)->mouse_x / (f32)(h)->width)
+#define MAESTRO_MOUSE_Y_NORM(h)  ((f32)(h)->mouse_y / (f32)(h)->height)
 // In captured mode: displacement from window center. In normal mode: frame-to-frame delta.
 #define MAESTRO_MOUSE_DELTA_X(h) ((h)->mouse_x - (h)->prev_mouse_x)
 #define MAESTRO_MOUSE_DELTA_Y(h) ((h)->mouse_y - (h)->prev_mouse_y)

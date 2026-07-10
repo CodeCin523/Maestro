@@ -19,7 +19,7 @@
 static const char *const VALIDATION_LAYERS[] = {
     "VK_LAYER_KHRONOS_validation"
 };
-static const uint32_t VALIDATION_LAYER_COUNT = sizeof(VALIDATION_LAYERS) / sizeof(VALIDATION_LAYERS[0]);
+static const u32 VALIDATION_LAYER_COUNT = sizeof(VALIDATION_LAYERS) / sizeof(VALIDATION_LAYERS[0]);
 
 
 /* ================================================================================ */
@@ -93,8 +93,8 @@ HarpResult vulkan_create_buffer(
     VkPhysicalDeviceMemoryProperties mem_dev;
     vkGetPhysicalDeviceMemoryProperties(actor->physical_device, &mem_dev);
 
-    uint32_t mem_type = UINT32_MAX;
-    for(uint32_t i = 0; i < mem_dev.memoryTypeCount; ++i) {
+    u32 mem_type = UINT32_MAX;
+    for(u32 i = 0; i < mem_dev.memoryTypeCount; ++i) {
         if((mem_req.memoryTypeBits & (1u << i)) &&
            (mem_dev.memoryTypes[i].propertyFlags & mem_props) == mem_props) {
             mem_type = i;
@@ -142,7 +142,7 @@ void vulkan_destroy_buffer(
     if(buffer != VK_NULL_HANDLE) vkDestroyBuffer(actor->device, buffer, NULL);
 }
 
-int32_t default_device_score(VkPhysicalDevice device) {
+i32 default_device_score(VkPhysicalDevice device) {
     VkPhysicalDeviceProperties props;
     vkGetPhysicalDeviceProperties(device, &props);
 
@@ -174,7 +174,7 @@ HarpResult init_vulkan_instance(HarpCoreHandler *core_handler, HarpHandlerBase *
 #endif
 
     if(validation) {
-        uint32_t layer_count = 0;
+        u32 layer_count = 0;
         vkEnumerateInstanceLayerProperties(&layer_count, NULL);
 
         VkLayerProperties *available = malloc(layer_count * sizeof(VkLayerProperties));
@@ -183,9 +183,9 @@ HarpResult init_vulkan_instance(HarpCoreHandler *core_handler, HarpHandlerBase *
 
         vkEnumerateInstanceLayerProperties(&layer_count, available);
 
-        for(uint32_t i = 0; i < VALIDATION_LAYER_COUNT; ++i) {
+        for(u32 i = 0; i < VALIDATION_LAYER_COUNT; ++i) {
             b8 found = 0;
-            for(uint32_t j = 0; j < layer_count; ++j) {
+            for(u32 j = 0; j < layer_count; ++j) {
                 if(strcmp(VALIDATION_LAYERS[i], available[j].layerName) == 0) {
                     found = 1;
                     break;
@@ -201,12 +201,12 @@ HarpResult init_vulkan_instance(HarpCoreHandler *core_handler, HarpHandlerBase *
         free(available);
     }
 
-    uint32_t ext_count = creator.extension_count;
+    u32 ext_count = creator.extension_count;
     const char **extensions = malloc((ext_count + 1) * sizeof(const char *));
     if(!extensions)
         return HARP_RESULT_OUT_OF_MEMORY;
 
-    for(uint32_t i = 0; i < ext_count; ++i)
+    for(u32 i = 0; i < ext_count; ++i)
         extensions[i] = creator.extensions[i];
 
     if(validation)
@@ -380,11 +380,11 @@ HarpResult create_vulkan_device(HarpCoreHandler *core_handler, HarpActorBase *ba
 
     /* Score and select the best physical device. */
     VkPhysicalDevice best_device = VK_NULL_HANDLE;
-    int32_t  best_score = 0;
-    uint32_t best_index = 0;
+    i32  best_score = 0;
+    u32 best_index = 0;
 
-    for(uint32_t i = 0; i < core->device_count; ++i) {
-        int32_t score = score_fn(core->devices[i]);
+    for(u32 i = 0; i < core->device_count; ++i) {
+        i32 score = score_fn(core->devices[i]);
         if(score > best_score) {
             best_score = score;
             best_device = core->devices[i];
@@ -403,7 +403,7 @@ HarpResult create_vulkan_device(HarpCoreHandler *core_handler, HarpActorBase *ba
 
     /* Verify swapchain extension support when a surface is provided. */
     if(creator.surface != VK_NULL_HANDLE) {
-        uint32_t ext_count = 0;
+        u32 ext_count = 0;
         vkEnumerateDeviceExtensionProperties(best_device, NULL, &ext_count, NULL);
 
         VkExtensionProperties *exts = malloc(ext_count * sizeof(VkExtensionProperties));
@@ -413,7 +413,7 @@ HarpResult create_vulkan_device(HarpCoreHandler *core_handler, HarpActorBase *ba
         vkEnumerateDeviceExtensionProperties(best_device, NULL, &ext_count, exts);
 
         b8 has_swapchain = 0;
-        for(uint32_t i = 0; i < ext_count; ++i) {
+        for(u32 i = 0; i < ext_count; ++i) {
             if(strcmp(exts[i].extensionName, VK_KHR_SWAPCHAIN_EXTENSION_NAME) == 0) {
                 has_swapchain = 1;
                 break;
@@ -428,7 +428,7 @@ HarpResult create_vulkan_device(HarpCoreHandler *core_handler, HarpActorBase *ba
     }
 
     /* Enumerate queue families and collect one entry per useful family. */
-    uint32_t family_count = 0;
+    u32 family_count = 0;
     vkGetPhysicalDeviceQueueFamilyProperties(best_device, &family_count, NULL);
 
     VkQueueFamilyProperties *families = malloc(family_count * sizeof(VkQueueFamilyProperties));
@@ -439,9 +439,9 @@ HarpResult create_vulkan_device(HarpCoreHandler *core_handler, HarpActorBase *ba
 
     /* Temporary queue list, unsorted. */
     MaestroVulkanQueue tmp[MAESTRO_VULKAN_MAX_QUEUES];
-    uint32_t tmp_count = 0;
+    u32 tmp_count = 0;
 
-    for(uint32_t i = 0; i < family_count && tmp_count < MAESTRO_VULKAN_MAX_QUEUES; ++i) {
+    for(u32 i = 0; i < family_count && tmp_count < MAESTRO_VULKAN_MAX_QUEUES; ++i) {
         VkQueueFlags flags = families[i].queueFlags;
 
         if(!(flags & (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT)))
@@ -464,7 +464,7 @@ HarpResult create_vulkan_device(HarpCoreHandler *core_handler, HarpActorBase *ba
     /* Validate: at least one queue must support present when a surface is given. */
     if(creator.surface != VK_NULL_HANDLE) {
         b8 found_present = 0;
-        for(uint32_t i = 0; i < tmp_count; ++i)
+        for(u32 i = 0; i < tmp_count; ++i)
             if(tmp[i].supports_present) { found_present = 1; break; }
 
         if(!found_present) {
@@ -474,10 +474,10 @@ HarpResult create_vulkan_device(HarpCoreHandler *core_handler, HarpActorBase *ba
     }
 
     /* Insertion sort by priority: graphics+present > graphics > compute > transfer. */
-    for(uint32_t i = 1; i < tmp_count; ++i) {
+    for(u32 i = 1; i < tmp_count; ++i) {
         MaestroVulkanQueue key = tmp[i];
         int key_prio = queue_priority(key.flags, key.supports_present);
-        int32_t j = (int32_t)i - 1;
+        i32 j = (i32)i - 1;
         while(j >= 0 && queue_priority(tmp[j].flags, tmp[j].supports_present) > key_prio) {
             tmp[j + 1] = tmp[j];
             --j;
@@ -486,9 +486,9 @@ HarpResult create_vulkan_device(HarpCoreHandler *core_handler, HarpActorBase *ba
     }
 
     /* Build unique VkDeviceQueueCreateInfo array. */
-    static const float priority = 1.0f;
+    static const f32 priority = 1.0f;
     VkDeviceQueueCreateInfo queue_infos[MAESTRO_VULKAN_MAX_QUEUES];
-    for(uint32_t i = 0; i < tmp_count; ++i) {
+    for(u32 i = 0; i < tmp_count; ++i) {
         queue_infos[i] = (VkDeviceQueueCreateInfo){
             .sType            = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
             .queueFamilyIndex = tmp[i].family,
@@ -498,7 +498,7 @@ HarpResult create_vulkan_device(HarpCoreHandler *core_handler, HarpActorBase *ba
     }
 
     /* Merge user extensions with VK_KHR_swapchain when needed. */
-    uint32_t total_ext_count = creator.extension_count;
+    u32 total_ext_count = creator.extension_count;
     b8       needs_swapchain = (creator.surface != VK_NULL_HANDLE);
     if(needs_swapchain) total_ext_count++;
 
@@ -508,7 +508,7 @@ HarpResult create_vulkan_device(HarpCoreHandler *core_handler, HarpActorBase *ba
         if(!all_extensions)
             return HARP_RESULT_OUT_OF_MEMORY;
 
-        for(uint32_t i = 0; i < creator.extension_count; ++i)
+        for(u32 i = 0; i < creator.extension_count; ++i)
             all_extensions[i] = creator.extensions[i];
 
         if(needs_swapchain)
@@ -535,7 +535,7 @@ HarpResult create_vulkan_device(HarpCoreHandler *core_handler, HarpActorBase *ba
 
     /* Retrieve queue handles and fill the public array. */
     impl->queue_count = tmp_count;
-    for(uint32_t i = 0; i < tmp_count; ++i) {
+    for(u32 i = 0; i < tmp_count; ++i) {
         impl->queues[i] = tmp[i];
         vkGetDeviceQueue(impl->device, tmp[i].family, 0, &impl->queues[i].queue);
     }
@@ -590,13 +590,13 @@ static VkSurfaceFormatKHR select_format_preferred(
     VkSurfaceKHR surface,
     VkFormat preferred)
 {
-    uint32_t count = 0;
+    u32 count = 0;
     vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &count, NULL);
     VkSurfaceFormatKHR *formats = malloc(count * sizeof(VkSurfaceFormatKHR));
     vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &count, formats);
 
     VkSurfaceFormatKHR result = formats[0];
-    for(uint32_t i = 0; i < count; ++i) {
+    for(u32 i = 0; i < count; ++i) {
         if(formats[i].format == preferred &&
            formats[i].colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
             result = formats[i];
@@ -612,13 +612,13 @@ static VkPresentModeKHR select_present_mode_preferred(
     VkSurfaceKHR surface,
     VkPresentModeKHR preferred)
 {
-    uint32_t count = 0;
+    u32 count = 0;
     vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &count, NULL);
     VkPresentModeKHR *modes = malloc(count * sizeof(VkPresentModeKHR));
     vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &count, modes);
 
     VkPresentModeKHR result = VK_PRESENT_MODE_FIFO_KHR;
-    for(uint32_t i = 0; i < count; ++i) {
+    for(u32 i = 0; i < count; ++i) {
         if(modes[i] == preferred) { result = preferred; break; }
     }
     free(modes);
@@ -635,15 +635,15 @@ static VkPresentModeKHR select_present_mode_preferred(
 static HarpResult swapchain_build(
     MaestroVulkanSwapchainHandlerImpl *impl,
     MaestroVulkanDeviceActor *device,
-    uint32_t width,
-    uint32_t height,
+    u32 width,
+    u32 height,
     VkSurfaceFormatKHR format,
     VkPresentModeKHR present_mode)
 {
     VkSurfaceCapabilitiesKHR caps;
     vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device->physical_device, impl->surface, &caps);
 
-    uint32_t image_count = caps.minImageCount + 1;
+    u32 image_count = caps.minImageCount + 1;
     if(caps.maxImageCount > 0 && image_count > caps.maxImageCount)
         image_count = caps.maxImageCount;
 
@@ -657,16 +657,16 @@ static HarpResult swapchain_build(
                         height > caps.maxImageExtent.height ? caps.maxImageExtent.height : height;
     }
 
-    uint32_t graphics_family = UINT32_MAX;
-    uint32_t present_family  = UINT32_MAX;
-    for(uint32_t i = 0; i < device->queue_count; ++i) {
+    u32 graphics_family = UINT32_MAX;
+    u32 present_family  = UINT32_MAX;
+    for(u32 i = 0; i < device->queue_count; ++i) {
         if((device->queues[i].flags & VK_QUEUE_GRAPHICS_BIT) && graphics_family == UINT32_MAX)
             graphics_family = device->queues[i].family;
         if(device->queues[i].supports_present && present_family == UINT32_MAX)
             present_family = device->queues[i].family;
     }
 
-    uint32_t queue_indices[2] = { graphics_family, present_family };
+    u32 queue_indices[2] = { graphics_family, present_family };
     b8 exclusive = (graphics_family == present_family);
 
     VkImageUsageFlags usage = impl->requested_usage
@@ -687,7 +687,7 @@ static HarpResult swapchain_build(
         VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR
     };
     VkCompositeAlphaFlagBitsKHR composite_alpha = alpha_preference[0];
-    for(uint32_t i = 0; i < sizeof(alpha_preference) / sizeof(alpha_preference[0]); ++i) {
+    for(u32 i = 0; i < sizeof(alpha_preference) / sizeof(alpha_preference[0]); ++i) {
         if(caps.supportedCompositeAlpha & alpha_preference[i]) {
             composite_alpha = alpha_preference[i];
             break;
@@ -717,7 +717,7 @@ static HarpResult swapchain_build(
     if(vkCreateSwapchainKHR(device->device, &create_info, NULL, &new_swapchain) != VK_SUCCESS)
         return HARP_RESULT_FAILED;
 
-    uint32_t new_count = 0;
+    u32 new_count = 0;
     vkGetSwapchainImagesKHR(device->device, new_swapchain, &new_count, NULL);
 
     VkImage *new_images = malloc(new_count * sizeof(VkImage));
@@ -734,7 +734,7 @@ static HarpResult swapchain_build(
         return HARP_RESULT_OUT_OF_MEMORY;
     }
 
-    for(uint32_t i = 0; i < new_count; ++i) {
+    for(u32 i = 0; i < new_count; ++i) {
         VkImageViewCreateInfo view_info = {
             .sType    = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
             .image    = new_images[i],
@@ -755,7 +755,7 @@ static HarpResult swapchain_build(
             }
         };
         if(vkCreateImageView(device->device, &view_info, NULL, &new_views[i]) != VK_SUCCESS) {
-            for(uint32_t j = 0; j < i; ++j)
+            for(u32 j = 0; j < i; ++j)
                 vkDestroyImageView(device->device, new_views[j], NULL);
             free(new_views);
             free(new_images);
@@ -765,7 +765,7 @@ static HarpResult swapchain_build(
     }
 
     /* New resources ready, destroy old ones. */
-    for(uint32_t i = 0; i < impl->pub.image_count; ++i)
+    for(u32 i = 0; i < impl->pub.image_count; ++i)
         vkDestroyImageView(device->device, impl->pub.views[i], NULL);
     free(impl->pub.views);
     free(impl->pub.images);
@@ -789,7 +789,7 @@ static HarpResult swapchain_build(
 HarpResult swapchain_acquire(
     MaestroVulkanSwapchainHandler *h,
     VkSemaphore signal_semaphore,
-    uint32_t *out_image_index,
+    u32 *out_image_index,
     b8 *out_suboptimal)
 {
     HARP_CHECK_STATE(HARP_HANDLER_IS_VALID(h), HARP_RESULT_INVALID_STATE);
@@ -818,7 +818,7 @@ HarpResult swapchain_present(
     MaestroVulkanSwapchainHandler *h,
     VkQueue queue,
     VkSemaphore wait_semaphore,
-    uint32_t image_index,
+    u32 image_index,
     b8 *out_suboptimal)
 {
     HARP_CHECK_STATE(HARP_HANDLER_IS_VALID(h), HARP_RESULT_INVALID_STATE);
@@ -853,8 +853,8 @@ HarpResult swapchain_present(
 HarpResult swapchain_recreate(
     MaestroVulkanSwapchainHandler *h,
     MaestroVulkanDeviceActor *device,
-    uint32_t width,
-    uint32_t height,
+    u32 width,
+    u32 height,
     VkPresentModeKHR present_mode)
 {
     HARP_CHECK_STATE(HARP_HANDLER_IS_VALID(h), HARP_RESULT_INVALID_STATE);
@@ -863,13 +863,13 @@ HarpResult swapchain_recreate(
     vkDeviceWaitIdle(device->device);
 
     /* Validate requested present mode is still supported; fall back to FIFO. */
-    uint32_t mode_count = 0;
+    u32 mode_count = 0;
     vkGetPhysicalDeviceSurfacePresentModesKHR(device->physical_device, impl->surface, &mode_count, NULL);
     VkPresentModeKHR *modes = malloc(mode_count * sizeof(VkPresentModeKHR));
     vkGetPhysicalDeviceSurfacePresentModesKHR(device->physical_device, impl->surface, &mode_count, modes);
 
     VkPresentModeKHR chosen = VK_PRESENT_MODE_FIFO_KHR;
-    for(uint32_t i = 0; i < mode_count; ++i) {
+    for(u32 i = 0; i < mode_count; ++i) {
         if(modes[i] == present_mode) { chosen = present_mode; break; }
     }
     free(modes);
@@ -897,8 +897,8 @@ HarpResult init_vulkan_swapchain(HarpCoreHandler *core_handler, HarpHandlerBase 
     MaestroVulkanSwapchainCreator *creator = (MaestroVulkanSwapchainCreator *)creator_base;
     MaestroVulkanDeviceActor *device = creator->device;
     VkSurfaceKHR surface             = creator->surface;
-    uint32_t width                   = creator->width;
-    uint32_t height                  = creator->height;
+    u32 width                   = creator->width;
+    u32 height                  = creator->height;
     VkSurfaceFormatKHR format        = select_format_preferred(device->physical_device, surface, creator->preferred_format);
     VkPresentModeKHR present_mode    = select_present_mode_preferred(device->physical_device, surface, creator->preferred_present_mode);
 
@@ -924,7 +924,7 @@ HarpResult term_vulkan_swapchain(HarpCoreHandler *core_handler, HarpHandlerBase 
     HARP_UNUSED(core_handler);
     MaestroVulkanSwapchainHandlerImpl *impl = (MaestroVulkanSwapchainHandlerImpl *)base;
 
-    for(uint32_t i = 0; i < impl->pub.image_count; ++i)
+    for(u32 i = 0; i < impl->pub.image_count; ++i)
         vkDestroyImageView(impl->device, impl->pub.views[i], NULL);
 
     free(impl->pub.views);

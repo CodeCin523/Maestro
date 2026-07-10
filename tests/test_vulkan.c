@@ -120,7 +120,7 @@ static void test_window_init(void) {
 /* WINDOW — GET VULKAN EXTENSIONS                             */
 /* ========================================================= */
 
-static uint32_t     g_ext_count  = 0;
+static u32     g_ext_count  = 0;
 static const char **g_extensions = NULL;
 
 static void test_window_get_vulkan_extensions(void) {
@@ -134,7 +134,7 @@ static void test_window_get_vulkan_extensions(void) {
     assert(g_extensions != NULL);
     g_window->get_vulkan_extensions(g_window, &g_ext_count, g_extensions);
 
-    for(uint32_t i = 0; i < g_ext_count; ++i) {
+    for(u32 i = 0; i < g_ext_count; ++i) {
         assert(g_extensions[i] != NULL);
         assert(g_extensions[i][0] != '\0');
         printf("    ext[%u] = %s\n", i, g_extensions[i]);
@@ -218,7 +218,7 @@ static void test_vulkan_device_create_default(void) {
     MaestroVulkanCoreHandlerImpl *core_impl =
         HARP_HANDLER_AS(MaestroVulkanCoreHandlerImpl, (HarpHandlerBase *)g_vk);
 
-    uint32_t count_before = core_impl->device_count;
+    u32 count_before = core_impl->device_count;
 
     HarpCreatorBase creator = { .flags = HARP_CREATOR_FLAG_DEFAULT_CREATOR };
 
@@ -237,7 +237,7 @@ static void test_vulkan_device_create_default(void) {
     printf("    instance pool: %u -> %u\n", count_before, core_impl->device_count);
     printf("    queues created: %u\n", actor->queue_count);
 
-    for(uint32_t i = 0; i < actor->queue_count; ++i) {
+    for(u32 i = 0; i < actor->queue_count; ++i) {
         MaestroVulkanQueue *q = &actor->queues[i];
         printf("    queues[%u]: family=%u flags=0x%x present=%u\n",
                i, q->family, q->flags, q->supports_present);
@@ -295,7 +295,7 @@ static void test_vulkan_device_create_with_features(void) {
     assert(actor->queue_count > 0);
 
     printf("    created device with samplerAnisotropy, queues: %u\n", actor->queue_count);
-    for(uint32_t i = 0; i < actor->queue_count; ++i) {
+    for(u32 i = 0; i < actor->queue_count; ++i) {
         MaestroVulkanQueue *q = &actor->queues[i];
         printf("    queues[%u]: family=%u flags=0x%x present=%u\n",
                i, q->family, q->flags, q->supports_present);
@@ -311,7 +311,7 @@ static void test_vulkan_device_create_with_features(void) {
     TEST_MARKER("VULKAN_DEVICE", "CREATE_WITH_FEATURES_DONE");
 }
 
-static int32_t always_zero_score(VkPhysicalDevice device) {
+static i32 always_zero_score(VkPhysicalDevice device) {
     (void)device;
     return 0;
 }
@@ -366,7 +366,7 @@ static void test_vulkan_device_create_buffer(void) {
     void *mapped = NULL;
     assert(vkMapMemory(actor->device, memory, 0, 256, 0, &mapped) == VK_SUCCESS);
     assert(mapped != NULL);
-    ((uint8_t *)mapped)[0] = 0xAB;
+    ((u8 *)mapped)[0] = 0xAB;
     vkUnmapMemory(actor->device, memory);
 
     g_vk->destroy_buffer(actor, buffer, memory);
@@ -383,7 +383,7 @@ static void test_vulkan_device_destroy(void) {
     MaestroVulkanCoreHandlerImpl *core_impl =
         HARP_HANDLER_AS(MaestroVulkanCoreHandlerImpl, (HarpHandlerBase *)g_vk);
 
-    uint32_t count_before = core_impl->device_count;
+    u32 count_before = core_impl->device_count;
 
     assert_harp(
         g_core->actor_destroy(g_core, MAESTRO_VULKAN_DEVICE_ACTOR_NAME, g_device_actor),

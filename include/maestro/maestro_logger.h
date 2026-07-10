@@ -14,7 +14,7 @@ extern "C" {
 /*  TYPEDEF                                                                         */
 /* ================================================================================ */
 
-typedef uint8_t MaestroLoggerLevel;
+typedef u8 MaestroLoggerLevel;
 enum {
     MAESTRO_LOGGER_LEVEL_INFO = 0,
     MAESTRO_LOGGER_LEVEL_WARN = 1,
@@ -37,7 +37,7 @@ typedef struct MaestroLoggerHandler MaestroLoggerHandler;
 struct MaestroLoggerCreator {
     HarpCreatorBase _base;
 
-    size_t buffer_size;
+    usize buffer_size;
 };
 
 struct MaestroLoggerHandler {

@@ -114,7 +114,7 @@ target_include_directories(
     src
 )
 
-harp_package(TARGET Maestro SUBDIRECTORY)
+harp_package(TARGET Maestro)
 
 # ------------------------------------------------------------------------------
 # Tests

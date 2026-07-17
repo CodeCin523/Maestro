@@ -63,83 +63,222 @@ static void fill_debug_messenger_info(VkDebugUtilsMessengerCreateInfoEXT *info) 
 /*  VULKAN CORE HANDLER                                                             */
 /* ================================================================================ */
 
-HarpResult vulkan_create_buffer(
+static VkImageAspectFlags image_aspect_for_format(VkFormat format) {
+    switch(format) {
+        case VK_FORMAT_D16_UNORM:
+        case VK_FORMAT_D32_SFLOAT:
+        case VK_FORMAT_X8_D24_UNORM_PACK32:
+            return VK_IMAGE_ASPECT_DEPTH_BIT;
+        case VK_FORMAT_S8_UINT:
+            return VK_IMAGE_ASPECT_STENCIL_BIT;
+        case VK_FORMAT_D16_UNORM_S8_UINT:
+        case VK_FORMAT_D24_UNORM_S8_UINT:
+        case VK_FORMAT_D32_SFLOAT_S8_UINT:
+            return VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+        default:
+            return VK_IMAGE_ASPECT_COLOR_BIT;
+    }
+}
+
+static VkImageViewType image_view_type(VkImageType type, u32 layers) {
+    switch(type) {
+        case VK_IMAGE_TYPE_1D:
+            return layers > 1 ? VK_IMAGE_VIEW_TYPE_1D_ARRAY : VK_IMAGE_VIEW_TYPE_1D;
+        case VK_IMAGE_TYPE_3D:
+            return VK_IMAGE_VIEW_TYPE_3D;
+        case VK_IMAGE_TYPE_2D:
+        default:
+            return layers > 1 ? VK_IMAGE_VIEW_TYPE_2D_ARRAY : VK_IMAGE_VIEW_TYPE_2D;
+    }
+}
+
+HarpResult vulkan_create_buffer_unbound(
     MaestroVulkanDeviceActor *actor,
-    VkDeviceSize              size,
-    VkBufferUsageFlags        usage,
-    VkMemoryPropertyFlags     mem_props,
-    VkBuffer                 *out_buffer,
-    VkDeviceMemory           *out_memory
+    VkDeviceSize size,
+    VkBufferUsageFlags usage,
+    VkBuffer *out_buffer,
+    VkMemoryRequirements *out_reqs
 ) {
     HARP_CHECK_STATE(HARP_ACTOR_IS_VALID(actor), HARP_RESULT_INVALID_STATE);
-    HARP_CHECK_ARG(out_buffer != NULL && out_memory != NULL, HARP_RESULT_MISSING_OUTPUT);
+    HARP_CHECK_ARG(out_buffer != NULL && out_reqs != NULL, HARP_RESULT_MISSING_OUTPUT);
 
     *out_buffer = VK_NULL_HANDLE;
-    *out_memory = VK_NULL_HANDLE;
 
     VkBufferCreateInfo buf_info = {
-        .sType       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-        .size        = size,
-        .usage       = usage,
+        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .size = size,
+        .usage = usage,
         .sharingMode = VK_SHARING_MODE_EXCLUSIVE
     };
 
     if(vkCreateBuffer(actor->device, &buf_info, NULL, out_buffer) != VK_SUCCESS)
         return HARP_RESULT_FAILED;
 
-    VkMemoryRequirements mem_req;
-    vkGetBufferMemoryRequirements(actor->device, *out_buffer, &mem_req);
+    vkGetBufferMemoryRequirements(actor->device, *out_buffer, out_reqs);
+    return HARP_RESULT_OK;
+}
 
-    VkPhysicalDeviceMemoryProperties mem_dev;
-    vkGetPhysicalDeviceMemoryProperties(actor->physical_device, &mem_dev);
+HarpResult vulkan_bind_buffer(
+    MaestroVulkanDeviceActor *actor,
+    VkBuffer buffer,
+    VkDeviceMemory memory,
+    VkDeviceSize offset
+) {
+    HARP_CHECK_STATE(HARP_ACTOR_IS_VALID(actor), HARP_RESULT_INVALID_STATE);
+    HARP_CHECK_ARG(buffer != VK_NULL_HANDLE && memory != VK_NULL_HANDLE, HARP_RESULT_INVALID_ARGUMENTS);
 
-    u32 mem_type = UINT32_MAX;
-    for(u32 i = 0; i < mem_dev.memoryTypeCount; ++i) {
-        if((mem_req.memoryTypeBits & (1u << i)) &&
-           (mem_dev.memoryTypes[i].propertyFlags & mem_props) == mem_props) {
-            mem_type = i;
-            break;
-        }
-    }
-
-    if(mem_type == UINT32_MAX) {
-        vkDestroyBuffer(actor->device, *out_buffer, NULL);
-        *out_buffer = VK_NULL_HANDLE;
+    if(vkBindBufferMemory(actor->device, buffer, memory, offset) != VK_SUCCESS)
         return HARP_RESULT_FAILED;
-    }
-
-    VkMemoryAllocateInfo alloc_info = {
-        .sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-        .allocationSize  = mem_req.size,
-        .memoryTypeIndex = mem_type
-    };
-
-    if(vkAllocateMemory(actor->device, &alloc_info, NULL, out_memory) != VK_SUCCESS) {
-        vkDestroyBuffer(actor->device, *out_buffer, NULL);
-        *out_buffer = VK_NULL_HANDLE;
-        return HARP_RESULT_FAILED;
-    }
-
-    if(vkBindBufferMemory(actor->device, *out_buffer, *out_memory, 0) != VK_SUCCESS) {
-        vkFreeMemory(actor->device, *out_memory, NULL);
-        vkDestroyBuffer(actor->device, *out_buffer, NULL);
-        *out_buffer = VK_NULL_HANDLE;
-        *out_memory = VK_NULL_HANDLE;
-        return HARP_RESULT_FAILED;
-    }
 
     return HARP_RESULT_OK;
 }
 
 void vulkan_destroy_buffer(
     MaestroVulkanDeviceActor *actor,
-    VkBuffer                  buffer,
-    VkDeviceMemory            memory
+    VkBuffer buffer
 ) {
     if(!HARP_ACTOR_IS_VALID(actor)) return;
-
-    if(memory != VK_NULL_HANDLE) vkFreeMemory(actor->device, memory, NULL);
     if(buffer != VK_NULL_HANDLE) vkDestroyBuffer(actor->device, buffer, NULL);
+}
+
+HarpResult vulkan_create_image_unbound(
+    MaestroVulkanDeviceActor *actor,
+    const MaestroVulkanImageDesc *desc,
+    VkImage *out_image,
+    VkMemoryRequirements *out_reqs
+) {
+    HARP_CHECK_STATE(HARP_ACTOR_IS_VALID(actor), HARP_RESULT_INVALID_STATE);
+    HARP_CHECK_ARG(desc != NULL, HARP_RESULT_INVALID_ARGUMENTS);
+    HARP_CHECK_ARG(out_image != NULL && out_reqs != NULL, HARP_RESULT_MISSING_OUTPUT);
+
+    *out_image = VK_NULL_HANDLE;
+
+    VkImageCreateInfo img_info = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+        .imageType = desc->type,
+        .format = desc->format,
+        .extent = desc->extent,
+        .mipLevels = desc->mip_levels ? desc->mip_levels : 1,
+        .arrayLayers = desc->array_layers ? desc->array_layers : 1,
+        .samples = desc->samples ? desc->samples : VK_SAMPLE_COUNT_1_BIT,
+        .tiling = desc->tiling,
+        .usage = desc->usage,
+        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED
+    };
+
+    if(vkCreateImage(actor->device, &img_info, NULL, out_image) != VK_SUCCESS)
+        return HARP_RESULT_FAILED;
+
+    vkGetImageMemoryRequirements(actor->device, *out_image, out_reqs);
+    return HARP_RESULT_OK;
+}
+
+HarpResult vulkan_finish_image(
+    MaestroVulkanDeviceActor *actor,
+    const MaestroVulkanImageDesc *desc,
+    VkImage image,
+    VkDeviceMemory memory,
+    VkDeviceSize offset,
+    MaestroVulkanImage *out
+) {
+    HARP_CHECK_STATE(HARP_ACTOR_IS_VALID(actor), HARP_RESULT_INVALID_STATE);
+    HARP_CHECK_ARG(desc != NULL, HARP_RESULT_INVALID_ARGUMENTS);
+    HARP_CHECK_ARG(image != VK_NULL_HANDLE && memory != VK_NULL_HANDLE, HARP_RESULT_INVALID_ARGUMENTS);
+    HARP_CHECK_ARG(out != NULL, HARP_RESULT_MISSING_OUTPUT);
+
+    out->image = VK_NULL_HANDLE;
+    out->view = VK_NULL_HANDLE;
+
+    if(vkBindImageMemory(actor->device, image, memory, offset) != VK_SUCCESS)
+        return HARP_RESULT_FAILED;
+
+    if(desc->make_view) {
+        u32 layers = desc->array_layers ? desc->array_layers : 1;
+
+        VkImageViewCreateInfo view_info = {
+            .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+            .image = image,
+            .viewType = image_view_type(desc->type, layers),
+            .format = desc->format,
+            .subresourceRange = {
+                .aspectMask = image_aspect_for_format(desc->format),
+                .baseMipLevel = 0,
+                .levelCount = desc->mip_levels ? desc->mip_levels : 1,
+                .baseArrayLayer = 0,
+                .layerCount = layers
+            }
+        };
+
+        if(vkCreateImageView(actor->device, &view_info, NULL, &out->view) != VK_SUCCESS)
+            return HARP_RESULT_FAILED;
+    }
+
+    out->image = image;
+    return HARP_RESULT_OK;
+}
+
+void vulkan_destroy_image(
+    MaestroVulkanDeviceActor *actor,
+    MaestroVulkanImage *image
+) {
+    if(!HARP_ACTOR_IS_VALID(actor)) return;
+    if(image == NULL) return;
+
+    if(image->view != VK_NULL_HANDLE) vkDestroyImageView(actor->device, image->view, NULL);
+    if(image->image != VK_NULL_HANDLE) vkDestroyImage(actor->device, image->image, NULL);
+    image->view = VK_NULL_HANDLE;
+    image->image = VK_NULL_HANDLE;
+}
+
+u32 vulkan_find_memory_type(
+    MaestroVulkanDeviceActor *actor,
+    u32 type_bits,
+    VkMemoryPropertyFlags props
+) {
+    HARP_CHECK_STATE(HARP_ACTOR_IS_VALID(actor), UINT32_MAX);
+
+    VkPhysicalDeviceMemoryProperties mem_dev;
+    vkGetPhysicalDeviceMemoryProperties(actor->physical_device, &mem_dev);
+
+    for(u32 i = 0; i < mem_dev.memoryTypeCount; ++i) {
+        if((type_bits & (1u << i)) &&
+           (mem_dev.memoryTypes[i].propertyFlags & props) == props)
+            return i;
+    }
+    return UINT32_MAX;
+}
+
+HarpResult vulkan_alloc_memory(
+    MaestroVulkanDeviceActor *actor,
+    VkDeviceSize size,
+    u32 memory_type_index,
+    VkDeviceMemory *out
+) {
+    HARP_CHECK_STATE(HARP_ACTOR_IS_VALID(actor), HARP_RESULT_INVALID_STATE);
+    HARP_CHECK_ARG(out != NULL, HARP_RESULT_MISSING_OUTPUT);
+    HARP_CHECK_ARG(memory_type_index != UINT32_MAX, HARP_RESULT_INVALID_ARGUMENTS);
+
+    *out = VK_NULL_HANDLE;
+
+    VkMemoryAllocateInfo alloc_info = {
+        .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+        .allocationSize = size,
+        .memoryTypeIndex = memory_type_index
+    };
+
+    if(vkAllocateMemory(actor->device, &alloc_info, NULL, out) != VK_SUCCESS)
+        return HARP_RESULT_FAILED;
+
+    return HARP_RESULT_OK;
+}
+
+void vulkan_free_memory(
+    MaestroVulkanDeviceActor *actor,
+    VkDeviceMemory memory
+) {
+    if(!HARP_ACTOR_IS_VALID(actor)) return;
+    if(memory != VK_NULL_HANDLE) vkFreeMemory(actor->device, memory, NULL);
 }
 
 i32 default_device_score(VkPhysicalDevice device) {
@@ -338,7 +477,6 @@ HarpResult patch_vulkan_instance(HarpCoreHandler *core_handler, HarpHandlerBase 
 
     return HARP_RESULT_OK;
 }
-
 
 
 /* ================================================================================ */
@@ -878,8 +1016,7 @@ HarpResult swapchain_recreate(
     return swapchain_build(impl, device, width, height, format, chosen);
 }
 
-HarpResult init_vulkan_swapchain(HarpCoreHandler *core_handler, HarpHandlerBase *base, HarpCreatorBase *creator_base)
-{
+HarpResult init_vulkan_swapchain(HarpCoreHandler *core_handler, HarpHandlerBase *base, HarpCreatorBase *creator_base) {
     MaestroVulkanSwapchainHandlerImpl *impl = (MaestroVulkanSwapchainHandlerImpl *)base;
 
     impl->pub.swapchain   = VK_NULL_HANDLE;
@@ -919,8 +1056,7 @@ HarpResult init_vulkan_swapchain(HarpCoreHandler *core_handler, HarpHandlerBase 
 
     return HARP_RESULT_OK;
 }
-HarpResult term_vulkan_swapchain(HarpCoreHandler *core_handler, HarpHandlerBase *base)
-{
+HarpResult term_vulkan_swapchain(HarpCoreHandler *core_handler, HarpHandlerBase *base) {
     HARP_UNUSED(core_handler);
     MaestroVulkanSwapchainHandlerImpl *impl = (MaestroVulkanSwapchainHandlerImpl *)base;
 

@@ -44,7 +44,7 @@ typedef struct MaestroVulkanQueue {
 /* ================================================================================ */
 
 #define MAESTRO_VULKAN_CORE_HANDLER_NAME "MaestroVulkanCoreHandler"
-#define MAESTRO_VULKAN_CORE_HANDLER_VERSION HARP_MAKE_VERSION(2,0,0)
+#define MAESTRO_VULKAN_CORE_HANDLER_VERSION HARP_MAKE_VERSION(3,0,0)
 
 struct MaestroVulkanCoreCreator {
     HarpCreatorBase _base;
@@ -58,12 +58,40 @@ struct MaestroVulkanCoreCreator {
     b8 enable_validation;
 };
 
+typedef struct MaestroVulkanImageDesc {
+    VkFormat format;
+    VkExtent3D extent;
+    VkImageType type; /* pass VK_IMAGE_TYPE_2D etc; 0 is 1D */
+    u32 mip_levels; /* 0 defaults to 1 */
+    u32 array_layers; /* 0 defaults to 1 */
+    VkImageUsageFlags usage;
+    VkImageTiling tiling; /* 0 is OPTIMAL */
+    VkSampleCountFlagBits samples; /* 0 defaults to 1 */
+    b8 make_view; /* finish_image builds the default view */
+} MaestroVulkanImageDesc;
+
+typedef struct MaestroVulkanImage {
+    VkImage image;
+    VkImageView view; /* VK_NULL_HANDLE when make_view was false */
+} MaestroVulkanImage;
+
+
 struct MaestroVulkanCoreHandler {
     HarpHandlerBase _base;
 
-    /* mem_props: e.g. VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT */
-    HarpResult (*create_buffer)(MaestroVulkanDeviceActor *device, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags mem_props, VkBuffer *out_buffer, VkDeviceMemory *out_memory);
-    void (*destroy_buffer)(MaestroVulkanDeviceActor *device, VkBuffer buffer, VkDeviceMemory memory);
+    HarpResult (*create_buffer_unbound)(MaestroVulkanDeviceActor *device, VkDeviceSize size, VkBufferUsageFlags usage, VkBuffer *out_buffer, VkMemoryRequirements *out_reqs);
+    HarpResult (*bind_buffer)(MaestroVulkanDeviceActor *device, VkBuffer buffer, VkDeviceMemory memory, VkDeviceSize offset);
+    void (*destroy_buffer)(MaestroVulkanDeviceActor *device, VkBuffer buffer);
+
+    HarpResult (*create_image_unbound)(MaestroVulkanDeviceActor *device, const MaestroVulkanImageDesc *desc, VkImage *out_image, VkMemoryRequirements *out_reqs);
+    HarpResult (*finish_image)(MaestroVulkanDeviceActor *device, const MaestroVulkanImageDesc *desc, VkImage image, VkDeviceMemory memory, VkDeviceSize offset, MaestroVulkanImage *out);
+    void (*destroy_image)(MaestroVulkanDeviceActor *device, MaestroVulkanImage *image);
+
+    /* Memory helpers for the caller's own allocator. Maestro never calls these
+       itself; they only simplify writing an allocator and may go unused. */
+    u32 (*find_memory_type)(MaestroVulkanDeviceActor *device, u32 type_bits, VkMemoryPropertyFlags props);
+    HarpResult (*alloc_memory)(MaestroVulkanDeviceActor *device, VkDeviceSize size, u32 memory_type_index, VkDeviceMemory *out);
+    void (*free_memory)(MaestroVulkanDeviceActor *device, VkDeviceMemory memory);
 
     MaestroVulkanDeviceScorePfn pfn_default_device_score;
 

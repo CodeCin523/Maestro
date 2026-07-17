@@ -159,8 +159,15 @@ static void test_vulkan_core_get_handler(void) {
     g_vk = (MaestroVulkanCoreHandler *)base;
     assert(g_vk != NULL);
     assert(!(base->status & HARP_STATUS_FLAG_VALID));
-    assert(g_vk->create_buffer  != NULL);
+    assert(g_vk->create_buffer_unbound != NULL);
+    assert(g_vk->bind_buffer != NULL);
     assert(g_vk->destroy_buffer != NULL);
+    assert(g_vk->create_image_unbound != NULL);
+    assert(g_vk->finish_image != NULL);
+    assert(g_vk->destroy_image != NULL);
+    assert(g_vk->find_memory_type != NULL);
+    assert(g_vk->alloc_memory != NULL);
+    assert(g_vk->free_memory != NULL);
 
     TEST_MARKER("VULKAN_CORE", "GET_HANDLER_DONE");
 }
@@ -345,22 +352,30 @@ static void test_vulkan_device_create_buffer(void) {
 
     MaestroVulkanDeviceActor *actor = HARP_ACTOR_AS(MaestroVulkanDeviceActor, g_device_actor);
 
-    VkBuffer       buffer = VK_NULL_HANDLE;
+    VkBuffer buffer = VK_NULL_HANDLE;
     VkDeviceMemory memory = VK_NULL_HANDLE;
 
+    /* Split creation: create unbound, allocate the memory ourselves, then bind. */
+    VkMemoryRequirements reqs;
     assert_harp(
-        g_vk->create_buffer(
-            actor,
-            256,
-            VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-            &buffer, &memory
-        ),
+        g_vk->create_buffer_unbound(actor, 256, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, &buffer, &reqs),
         "Failed to create staging buffer"
     );
-
     assert(buffer != VK_NULL_HANDLE);
+
+    u32 mem_type = g_vk->find_memory_type(
+        actor, reqs.memoryTypeBits,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+    );
+    assert(mem_type != UINT32_MAX);
+
+    assert_harp(
+        g_vk->alloc_memory(actor, reqs.size, mem_type, &memory),
+        "Failed to allocate staging memory"
+    );
     assert(memory != VK_NULL_HANDLE);
+
+    assert_harp(g_vk->bind_buffer(actor, buffer, memory, 0), "Failed to bind staging buffer");
 
     /* Map, write, unmap. */
     void *mapped = NULL;
@@ -369,7 +384,8 @@ static void test_vulkan_device_create_buffer(void) {
     ((u8 *)mapped)[0] = 0xAB;
     vkUnmapMemory(actor->device, memory);
 
-    g_vk->destroy_buffer(actor, buffer, memory);
+    g_vk->destroy_buffer(actor, buffer);
+    g_vk->free_memory(actor, memory);
     printf("    256-byte staging buffer created and destroyed\n");
 
     TEST_MARKER("VULKAN_DEVICE", "CREATE_BUFFER_DONE");

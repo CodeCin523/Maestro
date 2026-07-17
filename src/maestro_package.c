@@ -165,8 +165,15 @@ HarpResult maestro_register(HarpCoreHandler *core) {
     MaestroVulkanCoreHandler *vulkan_core = HARP_HANDLER_AS(MaestroVulkanCoreHandler, handler_base);
 
     vulkan_core->pfn_default_device_score = default_device_score;
-    vulkan_core->create_buffer            = vulkan_create_buffer;
-    vulkan_core->destroy_buffer           = vulkan_destroy_buffer;
+    vulkan_core->create_buffer_unbound = vulkan_create_buffer_unbound;
+    vulkan_core->bind_buffer = vulkan_bind_buffer;
+    vulkan_core->destroy_buffer = vulkan_destroy_buffer;
+    vulkan_core->create_image_unbound = vulkan_create_image_unbound;
+    vulkan_core->finish_image = vulkan_finish_image;
+    vulkan_core->destroy_image = vulkan_destroy_image;
+    vulkan_core->find_memory_type = vulkan_find_memory_type;
+    vulkan_core->alloc_memory = vulkan_alloc_memory;
+    vulkan_core->free_memory = vulkan_free_memory;
 
     core->handler_set_serving(core, handler_base, 1);
 

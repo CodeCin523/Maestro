@@ -10,3 +10,5 @@ include/maestro/maestro.h
 *.swo
 
 compile_commands.json
+
+qmoon_sketch.c

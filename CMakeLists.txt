@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.17)
 # ------------------------------------------------------------------------------
 project(
     Maestro
-    VERSION 1.6.3
+    VERSION 1.7.0
     LANGUAGES C
 )
 
@@ -24,6 +24,7 @@ configure_file(
 # ------------------------------------------------------------------------------
 find_package(Harp REQUIRED)
 find_package(Vulkan REQUIRED)
+find_package(Threads REQUIRED)
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     find_package(PkgConfig REQUIRED)
@@ -67,6 +68,8 @@ target_sources(
     src/impl/maestro_logger.c
     src/impl/maestro_path.c
     src/impl/maestro_vulkan.c
+    src/impl/maestro_vulkan_sequencer.c
+    src/impl/maestro_vulkan_swapchain.c
 )
 
 if(WIN32)
@@ -90,6 +93,7 @@ target_link_libraries(
     Maestro PUBLIC
     MaestroInterface
     Vulkan::Vulkan
+    Threads::Threads
 )
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")

@@ -370,7 +370,7 @@ static void test_vulkan_device_create_buffer(void) {
     assert(mem_type != UINT32_MAX);
 
     assert_harp(
-        g_vk->alloc_memory(actor, reqs.size, mem_type, &memory),
+        g_vk->alloc_memory(actor, reqs.size, mem_type, 0, &memory),
         "Failed to allocate staging memory"
     );
     assert(memory != VK_NULL_HANDLE);

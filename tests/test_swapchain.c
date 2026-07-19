@@ -4,11 +4,13 @@
 #include <maestro/maestro_logger.h>
 #include <maestro/maestro_window.h>
 #include <maestro/maestro_vulkan.h>
+#include <maestro/maestro_vulkan_swapchain.h>
 
 #include <harp/utils/harp_helpers.h>
 #include <harp/utils/harp_version.h>
 
 #include <impl/maestro_vulkan.h>
+#include <impl/maestro_vulkan_swapchain.h>
 
 #include <vulkan/vulkan.h>
 
@@ -57,7 +59,6 @@ static const char **g_extensions = NULL;
 
 /* Frame objects shared by the acquire/present tests. */
 static VkSemaphore   g_sem_acquire = VK_NULL_HANDLE;
-static VkSemaphore   g_sem_render  = VK_NULL_HANDLE;
 static VkFence       g_fence       = VK_NULL_HANDLE;
 static VkCommandPool g_cmd_pool    = VK_NULL_HANDLE;
 
@@ -253,12 +254,14 @@ static void test_swapchain_get_handler(void) {
     assert(g_swapchain->acquire  != NULL);
     assert(g_swapchain->present  != NULL);
     assert(g_swapchain->recreate != NULL);
+    assert(g_swapchain->set_present_mode != NULL);
 
     /* Calls on an uninitialized handler must fail cleanly. */
     u32 image_index = 0;
-    assert(g_swapchain->acquire(g_swapchain, VK_NULL_HANDLE, &image_index, NULL) == HARP_RESULT_INVALID_STATE);
-    assert(g_swapchain->present(g_swapchain, VK_NULL_HANDLE, VK_NULL_HANDLE, 0, NULL) == HARP_RESULT_INVALID_STATE);
-    assert(g_swapchain->recreate(g_swapchain, NULL, 0, 0, VK_PRESENT_MODE_FIFO_KHR) == HARP_RESULT_INVALID_STATE);
+    assert(g_swapchain->acquire(g_swapchain, VK_NULL_HANDLE, 0, &image_index) == HARP_RESULT_INVALID_STATE);
+    assert(g_swapchain->present(g_swapchain, VK_NULL_HANDLE, 0) == HARP_RESULT_INVALID_STATE);
+    assert(g_swapchain->recreate(g_swapchain, 0, 0, VK_PRESENT_MODE_FIFO_KHR) == HARP_RESULT_INVALID_STATE);
+    assert(g_swapchain->set_present_mode(g_swapchain, VK_PRESENT_MODE_FIFO_KHR) == HARP_RESULT_INVALID_STATE);
 
     TEST_MARKER("SWAPCHAIN", "GET_HANDLER_DONE");
 }
@@ -328,7 +331,13 @@ static void test_swapchain_init(void) {
     for(u32 i = 0; i < g_swapchain->image_count; ++i) {
         assert(g_swapchain->images[i] != VK_NULL_HANDLE);
         assert(g_swapchain->views[i]  != VK_NULL_HANDLE);
+        assert(g_swapchain->render_sems[i] != VK_NULL_HANDLE);
     }
+
+    /* The swapchain owns a present queue and publishes recreate tracking. */
+    assert(g_swapchain->present_queue != VK_NULL_HANDLE);
+    assert(g_swapchain->generation == 1);
+    assert(g_swapchain->needs_recreate == 0);
 
     /* Preferred mode or the guaranteed FIFO fallback. */
     assert(g_swapchain->present_mode == VK_PRESENT_MODE_MAILBOX_KHR ||
@@ -361,7 +370,6 @@ static void frame_objects_create(void) {
 
     VkSemaphoreCreateInfo sem_info = { .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO };
     assert_vk(vkCreateSemaphore(actor->device, &sem_info, NULL, &g_sem_acquire), "create acquire semaphore");
-    assert_vk(vkCreateSemaphore(actor->device, &sem_info, NULL, &g_sem_render),  "create render semaphore");
 
     VkFenceCreateInfo fence_info = { .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO };
     assert_vk(vkCreateFence(actor->device, &fence_info, NULL, &g_fence), "create fence");
@@ -382,12 +390,10 @@ static void frame_objects_destroy(void) {
 
     if(g_cmd_pool    != VK_NULL_HANDLE) vkDestroyCommandPool(actor->device, g_cmd_pool, NULL);
     if(g_fence       != VK_NULL_HANDLE) vkDestroyFence(actor->device, g_fence, NULL);
-    if(g_sem_render  != VK_NULL_HANDLE) vkDestroySemaphore(actor->device, g_sem_render, NULL);
     if(g_sem_acquire != VK_NULL_HANDLE) vkDestroySemaphore(actor->device, g_sem_acquire, NULL);
 
     g_cmd_pool    = VK_NULL_HANDLE;
     g_fence       = VK_NULL_HANDLE;
-    g_sem_render  = VK_NULL_HANDLE;
     g_sem_acquire = VK_NULL_HANDLE;
 }
 
@@ -401,22 +407,12 @@ static void test_swapchain_frame(const char *phase) {
 
     MaestroVulkanDeviceActor *actor = HARP_ACTOR_AS(MaestroVulkanDeviceActor, g_device_actor);
 
-    VkQueue present_queue = VK_NULL_HANDLE;
-    for(u32 i = 0; i < actor->queue_count; ++i) {
-        if(actor->queues[i].supports_present) {
-            present_queue = actor->queues[i].queue;
-            break;
-        }
-    }
-    assert(present_queue != VK_NULL_HANDLE);
-
     u32 image_index = UINT32_MAX;
-    b8  suboptimal  = 0;
     assert_harp(
-        g_swapchain->acquire(g_swapchain, g_sem_acquire, &image_index, &suboptimal),
+        g_swapchain->acquire(g_swapchain, g_sem_acquire, UINT64_MAX, &image_index),
         "acquire swapchain image"
     );
-    if(suboptimal) printf("    acquire reported suboptimal\n");
+    if(g_swapchain->needs_recreate) printf("    acquire flagged needs_recreate\n");
     assert(image_index < g_swapchain->image_count);
     printf("    acquired image %u / %u\n", image_index, g_swapchain->image_count);
 
@@ -458,6 +454,8 @@ static void test_swapchain_frame(const char *phase) {
 
     assert_vk(vkEndCommandBuffer(cmd), "end command buffer");
 
+    /* The submission that renders to the image signals the swapchain's own
+       per-image semaphore; present waits on it internally. */
     VkPipelineStageFlags wait_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
     VkSubmitInfo submit_info = {
         .sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO,
@@ -467,15 +465,16 @@ static void test_swapchain_frame(const char *phase) {
         .commandBufferCount   = 1,
         .pCommandBuffers      = &cmd,
         .signalSemaphoreCount = 1,
-        .pSignalSemaphores    = &g_sem_render
+        .pSignalSemaphores    = &g_swapchain->render_sems[image_index]
     };
     assert_vk(vkQueueSubmit(actor->queues[0].queue, 1, &submit_info, g_fence), "submit transition");
 
+    /* VK_NULL_HANDLE selects the swapchain's own present queue. */
     assert_harp(
-        g_swapchain->present(g_swapchain, present_queue, g_sem_render, image_index, &suboptimal),
+        g_swapchain->present(g_swapchain, VK_NULL_HANDLE, image_index),
         "present swapchain image"
     );
-    if(suboptimal) printf("    present reported suboptimal\n");
+    if(g_swapchain->needs_recreate) printf("    present flagged needs_recreate\n");
 
     assert_vk(vkWaitForFences(actor->device, 1, &g_fence, VK_TRUE, UINT64_MAX), "wait fence");
     assert_vk(vkResetFences(actor->device, 1, &g_fence), "reset fence");
@@ -498,13 +497,12 @@ static void test_swapchain_recreate(void) {
 
     TEST_MARKER("SWAPCHAIN", "RECREATE");
 
-    MaestroVulkanDeviceActor *actor = HARP_ACTOR_AS(MaestroVulkanDeviceActor, g_device_actor);
-
-    VkSwapchainKHR old_swapchain = g_swapchain->swapchain;
-    VkFormat       old_format    = g_swapchain->format;
+    VkSwapchainKHR old_swapchain  = g_swapchain->swapchain;
+    VkFormat       old_format     = g_swapchain->format;
+    u32            old_generation = g_swapchain->generation;
 
     assert_harp(
-        g_swapchain->recreate(g_swapchain, actor, 800, 600, VK_PRESENT_MODE_FIFO_KHR),
+        g_swapchain->recreate(g_swapchain, 800, 600, VK_PRESENT_MODE_FIFO_KHR),
         "recreate swapchain"
     );
 
@@ -519,17 +517,30 @@ static void test_swapchain_recreate(void) {
     assert(g_swapchain->extent.width  > 0);
     assert(g_swapchain->extent.height > 0);
 
+    /* Each rebuild bumps the generation and clears needs_recreate. */
+    assert(g_swapchain->generation == old_generation + 1);
+    assert(g_swapchain->needs_recreate == 0);
+
     for(u32 i = 0; i < g_swapchain->image_count; ++i) {
         assert(g_swapchain->images[i] != VK_NULL_HANDLE);
         assert(g_swapchain->views[i]  != VK_NULL_HANDLE);
+        assert(g_swapchain->render_sems[i] != VK_NULL_HANDLE);
     }
 
     /* An unsupported present mode must fall back to FIFO. */
     assert_harp(
-        g_swapchain->recreate(g_swapchain, actor, 800, 600, (VkPresentModeKHR)0x7FFFFFFF),
+        g_swapchain->recreate(g_swapchain, 800, 600, (VkPresentModeKHR)0x7FFFFFFF),
         "recreate with bogus present mode"
     );
     assert(g_swapchain->present_mode == VK_PRESENT_MODE_FIFO_KHR);
+    assert(g_swapchain->generation == old_generation + 2);
+
+    /* set_present_mode with the current mode is a no-op. */
+    assert_harp(
+        g_swapchain->set_present_mode(g_swapchain, g_swapchain->present_mode),
+        "set_present_mode no-op"
+    );
+    assert(g_swapchain->generation == old_generation + 2);
 
     printf("    recreated: %ux%u  mode=%u  images=%u\n",
         g_swapchain->extent.width, g_swapchain->extent.height,
@@ -559,6 +570,7 @@ static void test_swapchain_term(void) {
     assert(g_swapchain->swapchain   == VK_NULL_HANDLE);
     assert(g_swapchain->images      == NULL);
     assert(g_swapchain->views       == NULL);
+    assert(g_swapchain->render_sems == NULL);
     assert(g_swapchain->image_count == 0);
 
     TEST_MARKER("SWAPCHAIN", "TERM_DONE");

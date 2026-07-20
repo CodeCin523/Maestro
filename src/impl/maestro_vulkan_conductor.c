@@ -1,4 +1,4 @@
-#include "impl/maestro_vulkan_sequencer.h"
+#include "impl/maestro_vulkan_conductor.h"
 
 #include "maestro_globals.h"
 
@@ -16,8 +16,8 @@
 /*  HELPERS                                                                          */
 /* ================================================================================ */
 
-static MaestroVulkanSequencerHandlerImpl *impl_of(MaestroVulkanSequencerHandler *h) {
-    return (MaestroVulkanSequencerHandlerImpl *)h;
+static MaestroVulkanConductorHandlerImpl *impl_of(MaestroVulkanConductorHandler *h) {
+    return (MaestroVulkanConductorHandlerImpl *)h;
 }
 
 static VkResult create_timeline(VkDevice device, VkSemaphore *out) {
@@ -64,7 +64,7 @@ static u32 select_queue_index(MaestroVulkanDeviceActor *device, MaestroVulkanQue
     return fallback;
 }
 
-static SeqDeviceState *attach_device(MaestroVulkanSequencerHandlerImpl *impl, MaestroVulkanDeviceActor *device) {
+static SeqDeviceState *attach_device(MaestroVulkanConductorHandlerImpl *impl, MaestroVulkanDeviceActor *device) {
     mtx_lock(&impl->attach_lock);
 
     for(SeqDeviceState *ds = impl->device_list; ds != NULL; ds = ds->next) {
@@ -122,7 +122,7 @@ static SeqDeviceState *attach_device(MaestroVulkanSequencerHandlerImpl *impl, Ma
 /* pool_lock must be held. Returns a cue index marked OPEN, or SEQ_SENTINEL.
    Only free-listed or abandoned-and-complete cues are taken: a handle the
    application still holds is never recycled out from under it. */
-static u32 alloc_cue(MaestroVulkanSequencerHandlerImpl *impl) {
+static u32 alloc_cue(MaestroVulkanConductorHandlerImpl *impl) {
     u32 idx = SEQ_SENTINEL;
 
     if(impl->free_top > 0) {
@@ -167,7 +167,7 @@ static void fifo_push(SeqQueueSlot *slot, SeqCueRecord *cues, u32 idx) {
    timeline values. On a failed call the batch and everything queued behind
    it are marked FAILED and the timeline is host-signaled past the gap so
    waiters unblock; the FAILED state is how they learn the work never ran. */
-static HarpResult flush_slot(MaestroVulkanSequencerHandlerImpl *impl, SeqQueueSlot *slot) {
+static HarpResult flush_slot(MaestroVulkanConductorHandlerImpl *impl, SeqQueueSlot *slot) {
     if(atomic_load(&slot->pending_count) == 0) return HARP_RESULT_OK;
 
     mtx_lock(&slot->lock);
@@ -286,7 +286,7 @@ static HarpResult flush_slot(MaestroVulkanSequencerHandlerImpl *impl, SeqQueueSl
     return result;
 }
 
-static HarpResult flush_all(MaestroVulkanSequencerHandlerImpl *impl) {
+static HarpResult flush_all(MaestroVulkanConductorHandlerImpl *impl) {
     HarpResult result = HARP_RESULT_OK;
     mtx_lock(&impl->attach_lock);
     for(SeqDeviceState *ds = impl->device_list; ds != NULL; ds = ds->next) {
@@ -304,13 +304,13 @@ static HarpResult flush_all(MaestroVulkanSequencerHandlerImpl *impl) {
 /*  RECORDERS                                                                        */
 /* ================================================================================ */
 
-HarpResult seq_open_recorder(MaestroVulkanSequencerHandler *h, MaestroVulkanDeviceActor *device, MaestroVulkanQueueKind kind, MaestroVulkanRecorder **out) {
+HarpResult conductor_open_recorder(MaestroVulkanConductorHandler *h, MaestroVulkanDeviceActor *device, MaestroVulkanQueueKind kind, MaestroVulkanRecorder **out) {
     HARP_CHECK_STATE(HARP_HANDLER_IS_VALID(h), HARP_RESULT_INVALID_STATE);
     HARP_CHECK_ARG(HARP_ACTOR_IS_VALID(device), HARP_RESULT_INVALID_ARGUMENTS);
     HARP_CHECK_ARG(out != NULL, HARP_RESULT_MISSING_OUTPUT);
 
     *out = NULL;
-    MaestroVulkanSequencerHandlerImpl *impl = impl_of(h);
+    MaestroVulkanConductorHandlerImpl *impl = impl_of(h);
 
     SeqDeviceState *ds = attach_device(impl, device);
     if(ds == NULL) return HARP_RESULT_FAILED;
@@ -345,7 +345,7 @@ HarpResult seq_open_recorder(MaestroVulkanSequencerHandler *h, MaestroVulkanDevi
     return HARP_RESULT_OK;
 }
 
-HarpResult seq_close_recorder(MaestroVulkanRecorder *rec) {
+HarpResult conductor_close_recorder(MaestroVulkanRecorder *rec) {
     if(rec == NULL) return HARP_RESULT_INVALID_STATE;
 
     if(rec->last_value > 0 && rec->slot->timeline != VK_NULL_HANDLE) {
@@ -363,7 +363,7 @@ HarpResult seq_close_recorder(MaestroVulkanRecorder *rec) {
     return HARP_RESULT_OK;
 }
 
-VkCommandBuffer seq_record(MaestroVulkanRecorder *rec) {
+VkCommandBuffer conductor_record(MaestroVulkanRecorder *rec) {
     if(rec == NULL) return VK_NULL_HANDLE;
 
     VkCommandBuffer cmd;
@@ -391,11 +391,11 @@ VkCommandBuffer seq_record(MaestroVulkanRecorder *rec) {
     return cmd;
 }
 
-MaestroVulkanCue seq_submit(MaestroVulkanRecorder *rec, const MaestroVulkanSubmitDesc *desc) {
+MaestroVulkanCue conductor_submit(MaestroVulkanRecorder *rec, const MaestroVulkanSubmitDesc *desc) {
     MaestroVulkanCue invalid = { SEQ_SENTINEL, 0 };
     if(rec == NULL || desc == NULL || desc->cmd == VK_NULL_HANDLE) return invalid;
 
-    MaestroVulkanSequencerHandlerImpl *impl = rec->seq;
+    MaestroVulkanConductorHandlerImpl *impl = rec->seq;
 
     /* A truncated dependency would be a silent sync bug, so oversized or
        inconsistent lists are rejected outright. */
@@ -493,7 +493,7 @@ MaestroVulkanCue seq_submit(MaestroVulkanRecorder *rec, const MaestroVulkanSubmi
     return (MaestroVulkanCue){ idx, gen };
 }
 
-HarpResult seq_reset_recorder(MaestroVulkanRecorder *rec) {
+HarpResult conductor_reset_recorder(MaestroVulkanRecorder *rec) {
     if(rec == NULL) return HARP_RESULT_INVALID_STATE;
 
     if(rec->last_value > 0) {
@@ -507,12 +507,12 @@ HarpResult seq_reset_recorder(MaestroVulkanRecorder *rec) {
     return HARP_RESULT_OK;
 }
 
-HarpResult seq_flush(MaestroVulkanRecorder *rec) {
+HarpResult conductor_flush(MaestroVulkanRecorder *rec) {
     if(rec == NULL) return HARP_RESULT_INVALID_STATE;
     return flush_slot(rec->seq, rec->slot);
 }
 
-HarpResult seq_conduct(MaestroVulkanSequencerHandler *h) {
+HarpResult conductor_conduct(MaestroVulkanConductorHandler *h) {
     HARP_CHECK_STATE(HARP_HANDLER_IS_VALID(h), HARP_RESULT_INVALID_STATE);
     return flush_all(impl_of(h));
 }
@@ -522,9 +522,9 @@ HarpResult seq_conduct(MaestroVulkanSequencerHandler *h) {
 /*  CUES                                                                             */
 /* ================================================================================ */
 
-MaestroVulkanCueState seq_cue_state(MaestroVulkanSequencerHandler *h, MaestroVulkanCue cue) {
+MaestroVulkanCueState conductor_cue_state(MaestroVulkanConductorHandler *h, MaestroVulkanCue cue) {
     if(!HARP_HANDLER_IS_VALID(h)) return MAESTRO_VULKAN_CUE_RETIRED;
-    MaestroVulkanSequencerHandlerImpl *impl = impl_of(h);
+    MaestroVulkanConductorHandlerImpl *impl = impl_of(h);
     if(cue.index >= impl->cue_capacity) return MAESTRO_VULKAN_CUE_RETIRED;
     SeqCueRecord *c = &impl->cues[cue.index];
     if(c->generation != cue.gen) return MAESTRO_VULKAN_CUE_RETIRED;
@@ -541,9 +541,9 @@ MaestroVulkanCueState seq_cue_state(MaestroVulkanSequencerHandler *h, MaestroVul
     return (MaestroVulkanCueState)st;
 }
 
-b8 seq_cue_done(MaestroVulkanSequencerHandler *h, MaestroVulkanCue cue) {
+b8 conductor_cue_done(MaestroVulkanConductorHandler *h, MaestroVulkanCue cue) {
     if(!HARP_HANDLER_IS_VALID(h)) return 0;
-    MaestroVulkanSequencerHandlerImpl *impl = impl_of(h);
+    MaestroVulkanConductorHandlerImpl *impl = impl_of(h);
     if(cue.index >= impl->cue_capacity) return 0;
     SeqCueRecord *c = &impl->cues[cue.index];
     if(c->generation != cue.gen) return 1; /* stale: completed and recycled */
@@ -561,9 +561,9 @@ b8 seq_cue_done(MaestroVulkanSequencerHandler *h, MaestroVulkanCue cue) {
     return 0;
 }
 
-HarpResult seq_cue_wait(MaestroVulkanSequencerHandler *h, MaestroVulkanCue cue, u64 timeout_ns) {
+HarpResult conductor_cue_wait(MaestroVulkanConductorHandler *h, MaestroVulkanCue cue, u64 timeout_ns) {
     HARP_CHECK_STATE(HARP_HANDLER_IS_VALID(h), HARP_RESULT_INVALID_STATE);
-    MaestroVulkanSequencerHandlerImpl *impl = impl_of(h);
+    MaestroVulkanConductorHandlerImpl *impl = impl_of(h);
     if(cue.index >= impl->cue_capacity) return HARP_RESULT_INVALID_ARGUMENTS;
     SeqCueRecord *c = &impl->cues[cue.index];
     if(c->generation != cue.gen) return HARP_RESULT_OK; /* stale: completed and recycled */
@@ -595,9 +595,9 @@ HarpResult seq_cue_wait(MaestroVulkanSequencerHandler *h, MaestroVulkanCue cue, 
     return HARP_RESULT_OK;
 }
 
-void seq_cue_release(MaestroVulkanSequencerHandler *h, MaestroVulkanCue cue) {
+void conductor_cue_release(MaestroVulkanConductorHandler *h, MaestroVulkanCue cue) {
     if(!HARP_HANDLER_IS_VALID(h)) return;
-    MaestroVulkanSequencerHandlerImpl *impl = impl_of(h);
+    MaestroVulkanConductorHandlerImpl *impl = impl_of(h);
     if(cue.index >= impl->cue_capacity) return;
     SeqCueRecord *c = &impl->cues[cue.index];
     if(c->generation != cue.gen) return;
@@ -631,13 +631,13 @@ void seq_cue_release(MaestroVulkanSequencerHandler *h, MaestroVulkanCue cue) {
 /*  LIFECYCLE                                                                        */
 /* ================================================================================ */
 
-HarpResult init_vulkan_sequencer(HarpCoreHandler *core_handler, HarpHandlerBase *base, HarpCreatorBase *creator) {
+HarpResult init_vulkan_conductor(HarpCoreHandler *core_handler, HarpHandlerBase *base, HarpCreatorBase *creator) {
     HARP_UNUSED(core_handler);
-    MaestroVulkanSequencerHandlerImpl *impl = (MaestroVulkanSequencerHandlerImpl *)base;
+    MaestroVulkanConductorHandlerImpl *impl = (MaestroVulkanConductorHandlerImpl *)base;
 
     u32 capacity = MAESTRO_VULKAN_MAX_CUES;
     if(creator != NULL && !(creator->flags & HARP_CREATOR_FLAG_DEFAULT_CREATOR)) {
-        const MaestroVulkanSequencerCreator *c = (const MaestroVulkanSequencerCreator *)creator;
+        const MaestroVulkanConductorCreator *c = (const MaestroVulkanConductorCreator *)creator;
         if(c->cue_capacity > 0) capacity = c->cue_capacity;
     }
 
@@ -673,9 +673,9 @@ HarpResult init_vulkan_sequencer(HarpCoreHandler *core_handler, HarpHandlerBase 
     return HARP_RESULT_OK;
 }
 
-HarpResult term_vulkan_sequencer(HarpCoreHandler *core_handler, HarpHandlerBase *base) {
+HarpResult term_vulkan_conductor(HarpCoreHandler *core_handler, HarpHandlerBase *base) {
     HARP_UNUSED(core_handler);
-    MaestroVulkanSequencerHandlerImpl *impl = (MaestroVulkanSequencerHandlerImpl *)base;
+    MaestroVulkanConductorHandlerImpl *impl = (MaestroVulkanConductorHandlerImpl *)base;
 
     SeqDeviceState *ds = impl->device_list;
     while(ds != NULL) {
@@ -704,7 +704,7 @@ HarpResult term_vulkan_sequencer(HarpCoreHandler *core_handler, HarpHandlerBase 
     return HARP_RESULT_OK;
 }
 
-HarpResult patch_vulkan_sequencer(HarpCoreHandler *core_handler, HarpHandlerBase *base) {
+HarpResult patch_vulkan_conductor(HarpCoreHandler *core_handler, HarpHandlerBase *base) {
     HARP_UNUSED(core_handler);
     HARP_UNUSED(base);
     return HARP_RESULT_OK;

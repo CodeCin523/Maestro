@@ -3,7 +3,7 @@
 #include <maestro/maestro.h>
 #include <maestro/maestro_logger.h>
 #include <maestro/maestro_vulkan.h>
-#include <maestro/maestro_vulkan_sequencer.h>
+#include <maestro/maestro_vulkan_conductor.h>
 
 #include <harp/utils/harp_helpers.h>
 #include <harp/utils/harp_version.h>
@@ -36,7 +36,7 @@ static HarpRuntime *g_runtime = NULL;
 static HarpCoreHandler *g_core = NULL;
 static MaestroLoggerHandler *g_logger = NULL;
 static MaestroVulkanCoreHandler *g_vk = NULL;
-static MaestroVulkanSequencerHandler *g_seq = NULL;
+static MaestroVulkanConductorHandler *g_seq = NULL;
 static HarpActorBase *g_device_actor = NULL;
 
 
@@ -103,7 +103,7 @@ static void test_vulkan_core_init(void) {
 
     MaestroVulkanCoreCreator creator = {
         ._base = { .kind = 0, .flags = 0 },
-        .app_name = "MaestroSequencerTest",
+        .app_name = "MaestroConductorTest",
         .app_version = HARP_MAKE_VERSION(1, 0, 0),
         .extensions = NULL,
         .extension_count = 0,
@@ -126,15 +126,15 @@ static void test_vulkan_core_init(void) {
     TEST_MARKER("VULKAN_CORE", "INIT_DONE");
 }
 
-static void test_sequencer_get_handler(void) {
+static void test_conductor_get_handler(void) {
     if(!g_vk) return;
 
-    TEST_MARKER("SEQUENCER", "GET_HANDLER");
+    TEST_MARKER("CONDUCTOR", "GET_HANDLER");
 
-    HarpDependencyDesc dep = HARP_DEPENDENCY(MAESTRO_VULKAN_SEQUENCER_HANDLER_NAME, 0, UINT32_MAX);
+    HarpDependencyDesc dep = HARP_DEPENDENCY(MAESTRO_VULKAN_CONDUCTOR_HANDLER_NAME, 0, UINT32_MAX);
     HarpHandlerBase *base = NULL;
-    assert_harp(g_core->get_handler(g_core, &dep, &base), "Failed to get sequencer handler");
-    g_seq = (MaestroVulkanSequencerHandler *)base;
+    assert_harp(g_core->get_handler(g_core, &dep, &base), "Failed to get conductor handler");
+    g_seq = (MaestroVulkanConductorHandler *)base;
 
     assert(g_seq->open_recorder != NULL);
     assert(g_seq->record != NULL);
@@ -144,23 +144,23 @@ static void test_sequencer_get_handler(void) {
     assert(g_seq->cue_done != NULL);
 
     /* small pool so the exhaustion test can fill it */
-    MaestroVulkanSequencerCreator creator = {
+    MaestroVulkanConductorCreator creator = {
         ._base = { .kind = 0, .flags = 0 },
         .cue_capacity = 4
     };
     assert_harp(
-        g_core->handler_initialize(g_core, MAESTRO_VULKAN_SEQUENCER_HANDLER_NAME,
+        g_core->handler_initialize(g_core, MAESTRO_VULKAN_CONDUCTOR_HANDLER_NAME,
             (const HarpCreatorBase *)&creator),
-        "Failed to initialize sequencer"
+        "Failed to initialize conductor"
     );
 
-    TEST_MARKER("SEQUENCER", "GET_HANDLER_DONE");
+    TEST_MARKER("CONDUCTOR", "GET_HANDLER_DONE");
 }
 
 static void test_device_create(void) {
     if(!g_vk || !g_seq) return;
 
-    TEST_MARKER("SEQUENCER", "DEVICE_CREATE");
+    TEST_MARKER("CONDUCTOR", "DEVICE_CREATE");
 
     VkPhysicalDeviceVulkan13Features f13 = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
@@ -201,12 +201,12 @@ static void test_device_create(void) {
     MaestroVulkanDeviceActor *actor = HARP_ACTOR_AS(MaestroVulkanDeviceActor, g_device_actor);
     printf("    device created with %u queue(s)\n", actor->queue_count);
 
-    TEST_MARKER("SEQUENCER", "DEVICE_CREATE_DONE");
+    TEST_MARKER("CONDUCTOR", "DEVICE_CREATE_DONE");
 }
 
 
 /* ========================================================= */
-/* SEQUENCER                                                  */
+/* CONDUCTOR                                                  */
 /* ========================================================= */
 
 static b8 make_host_buffer(MaestroVulkanDeviceActor *actor, VkDeviceSize size, VkBuffer *out_buf, VkDeviceMemory *out_mem) {
@@ -229,10 +229,10 @@ static b8 make_host_buffer(MaestroVulkanDeviceActor *actor, VkDeviceSize size, V
     return 1;
 }
 
-static void test_sequencer_single(void) {
+static void test_conductor_single(void) {
     if(!g_seq || !g_device_actor) return;
 
-    TEST_MARKER("SEQUENCER", "SINGLE");
+    TEST_MARKER("CONDUCTOR", "SINGLE");
 
     MaestroVulkanDeviceActor *actor = HARP_ACTOR_AS(MaestroVulkanDeviceActor, g_device_actor);
 
@@ -273,13 +273,13 @@ static void test_sequencer_single(void) {
     g_vk->free_memory(actor, mem);
 
     printf("    record -> submit -> conduct -> wait: buffer filled by GPU\n");
-    TEST_MARKER("SEQUENCER", "SINGLE_DONE");
+    TEST_MARKER("CONDUCTOR", "SINGLE_DONE");
 }
 
-static void test_sequencer_dependency(void) {
+static void test_conductor_dependency(void) {
     if(!g_seq || !g_device_actor) return;
 
-    TEST_MARKER("SEQUENCER", "DEPENDENCY");
+    TEST_MARKER("CONDUCTOR", "DEPENDENCY");
 
     MaestroVulkanDeviceActor *actor = HARP_ACTOR_AS(MaestroVulkanDeviceActor, g_device_actor);
 
@@ -329,13 +329,13 @@ static void test_sequencer_dependency(void) {
     g_vk->free_memory(actor, mem_b);
 
     printf("    dependency A <- B: both completed, values correct\n");
-    TEST_MARKER("SEQUENCER", "DEPENDENCY_DONE");
+    TEST_MARKER("CONDUCTOR", "DEPENDENCY_DONE");
 }
 
-static void test_sequencer_stale_cue(void) {
+static void test_conductor_stale_cue(void) {
     if(!g_seq) return;
 
-    TEST_MARKER("SEQUENCER", "STALE_CUE");
+    TEST_MARKER("CONDUCTOR", "STALE_CUE");
 
     /* generation mismatch means completed-and-recycled: reads as done */
     MaestroVulkanCue bogus = { 0, 999999u };
@@ -356,13 +356,13 @@ static void test_sequencer_stale_cue(void) {
     assert(g_seq->cue_wait(g_seq, oob, 0) != HARP_RESULT_OK);
 
     printf("    stale and null cues read as done, out-of-range errors\n");
-    TEST_MARKER("SEQUENCER", "STALE_CUE_DONE");
+    TEST_MARKER("CONDUCTOR", "STALE_CUE_DONE");
 }
 
-static void test_sequencer_exhaustion(void) {
+static void test_conductor_exhaustion(void) {
     if(!g_seq || !g_device_actor) return;
 
-    TEST_MARKER("SEQUENCER", "EXHAUSTION");
+    TEST_MARKER("CONDUCTOR", "EXHAUSTION");
 
     MaestroVulkanDeviceActor *actor = HARP_ACTOR_AS(MaestroVulkanDeviceActor, g_device_actor);
 
@@ -409,7 +409,7 @@ static void test_sequencer_exhaustion(void) {
     assert_harp(g_seq->close_recorder(rec), "close_recorder failed");
 
     printf("    exhaustion: held cues survive, release frees, wait flushes\n");
-    TEST_MARKER("SEQUENCER", "EXHAUSTION_DONE");
+    TEST_MARKER("CONDUCTOR", "EXHAUSTION_DONE");
 }
 
 
@@ -417,27 +417,27 @@ static void test_sequencer_exhaustion(void) {
 /* TEARDOWN                                                   */
 /* ========================================================= */
 
-static void test_sequencer_term(void) {
+static void test_conductor_term(void) {
     if(!g_seq) return;
 
-    TEST_MARKER("SEQUENCER", "TERM");
+    TEST_MARKER("CONDUCTOR", "TERM");
     assert_harp(
-        g_core->handler_terminate(g_core, MAESTRO_VULKAN_SEQUENCER_HANDLER_NAME),
-        "Failed to terminate sequencer"
+        g_core->handler_terminate(g_core, MAESTRO_VULKAN_CONDUCTOR_HANDLER_NAME),
+        "Failed to terminate conductor"
     );
-    TEST_MARKER("SEQUENCER", "TERM_DONE");
+    TEST_MARKER("CONDUCTOR", "TERM_DONE");
 }
 
 static void test_device_destroy(void) {
     if(!g_vk || !g_device_actor) return;
 
-    TEST_MARKER("SEQUENCER", "DEVICE_DESTROY");
+    TEST_MARKER("CONDUCTOR", "DEVICE_DESTROY");
     assert_harp(
         g_core->actor_destroy(g_core, MAESTRO_VULKAN_DEVICE_ACTOR_NAME, g_device_actor),
         "Failed to destroy device actor"
     );
     g_device_actor = NULL;
-    TEST_MARKER("SEQUENCER", "DEVICE_DESTROY_DONE");
+    TEST_MARKER("CONDUCTOR", "DEVICE_DESTROY_DONE");
 }
 
 static void test_vulkan_core_term(void) {
@@ -470,22 +470,22 @@ static void test_runtime_term(void) {
 
 int main(int argc, char **argv) {
     HARP_UNUSED(argc);
-    printf("=== HARP / MAESTRO SEQUENCER TEST ===\n");
+    printf("=== HARP / MAESTRO CONDUCTOR TEST ===\n");
 
     test_runtime_init(argv[0]);
     test_maestro_register();
     test_logger_init();
 
     test_vulkan_core_init();
-    test_sequencer_get_handler();
+    test_conductor_get_handler();
     test_device_create();
 
-    test_sequencer_single();
-    test_sequencer_dependency();
-    test_sequencer_stale_cue();
-    test_sequencer_exhaustion();
+    test_conductor_single();
+    test_conductor_dependency();
+    test_conductor_stale_cue();
+    test_conductor_exhaustion();
 
-    test_sequencer_term();
+    test_conductor_term();
     test_device_destroy();
     test_vulkan_core_term();
     test_logger_term();

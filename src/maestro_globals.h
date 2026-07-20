@@ -4,7 +4,7 @@
 #include <maestro/maestro_logger.h>
 #include <maestro/maestro_path.h>
 #include <maestro/maestro_vulkan.h>
-#include <maestro/maestro_vulkan_sequencer.h>
+#include <maestro/maestro_vulkan_conductor.h>
 #include <maestro/maestro_vulkan_swapchain.h>
 #include <maestro/maestro_window.h>
 
@@ -19,7 +19,7 @@ extern MaestroLoggerHandler *g_logger;
 extern MaestroPathHandler *g_path;
 extern MaestroVulkanCoreHandler *g_vulkan_core;
 extern MaestroVulkanSwapchainHandler *g_vulkan_swapchain;
-extern MaestroVulkanSequencerHandler *g_vulkan_sequencer;
+extern MaestroVulkanConductorHandler *g_vulkan_conductor;
 extern MaestroWindowHandler *g_window;
 
 
@@ -33,7 +33,7 @@ extern const char * const g_window_name;
 extern const char * const g_vulkan_core_name;
 extern const char * const g_vulkan_device_name;
 extern const char * const g_vulkan_swapchain_name;
-extern const char * const g_vulkan_sequencer_name;
+extern const char * const g_vulkan_conductor_name;
 
 
 #endif /* MAESTRO_GLOBALS_H */

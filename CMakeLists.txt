@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.17)
 # ------------------------------------------------------------------------------
 project(
     Maestro
-    VERSION 1.7.0
+    VERSION 1.8.0
     LANGUAGES C
 )
 
@@ -68,7 +68,7 @@ target_sources(
     src/impl/maestro_logger.c
     src/impl/maestro_path.c
     src/impl/maestro_vulkan.c
-    src/impl/maestro_vulkan_sequencer.c
+    src/impl/maestro_vulkan_conductor.c
     src/impl/maestro_vulkan_swapchain.c
 )
 

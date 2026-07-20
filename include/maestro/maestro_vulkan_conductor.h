@@ -1,5 +1,5 @@
-#ifndef MAESTRO_VULKAN_SEQUENCER_H
-#define MAESTRO_VULKAN_SEQUENCER_H
+#ifndef MAESTRO_VULKAN_CONDUCTOR_H
+#define MAESTRO_VULKAN_CONDUCTOR_H
 
 #ifdef __cplusplus
 extern "C" {
@@ -12,7 +12,7 @@ extern "C" {
 /*  TYPEDEF                                                                         */
 /* ================================================================================ */
 
-typedef struct MaestroVulkanSequencerHandler MaestroVulkanSequencerHandler;
+typedef struct MaestroVulkanConductorHandler MaestroVulkanConductorHandler;
 typedef struct MaestroVulkanRecorder MaestroVulkanRecorder;
 
 typedef u8 MaestroVulkanQueueKind;
@@ -39,16 +39,16 @@ enum {
 
 
 /* ================================================================================ */
-/*  SEQUENCER HANDLER                                                               */
+/*  CONDUCTOR HANDLER                                                               */
 /* ================================================================================ */
 
-#define MAESTRO_VULKAN_SEQUENCER_HANDLER_NAME "MaestroVulkanSequencerHandler"
-#define MAESTRO_VULKAN_SEQUENCER_HANDLER_VERSION HARP_MAKE_VERSION(1,0,0)
+#define MAESTRO_VULKAN_CONDUCTOR_HANDLER_NAME "MaestroVulkanConductorHandler"
+#define MAESTRO_VULKAN_CONDUCTOR_HANDLER_VERSION HARP_MAKE_VERSION(1,0,0)
 
-typedef struct MaestroVulkanSequencerCreator {
+typedef struct MaestroVulkanConductorCreator {
     HarpCreatorBase _base;
     u32 cue_capacity; /* 0 selects MAESTRO_VULKAN_MAX_CUES */
-} MaestroVulkanSequencerCreator;
+} MaestroVulkanConductorCreator;
 
 /* A cue is a value type identifying one submission. A held cue is stable
    until cue_release: it is never recycled out from under its owner. Once
@@ -93,22 +93,22 @@ typedef struct MaestroVulkanSubmitDesc {
    - cue_wait returns HARP_RESULT_OK on completion (or a stale handle),
      HARP_RESULT_INVALID_STATE on timeout (not done yet, retry), and
      HARP_RESULT_FAILED if the submission failed or the wait errored. */
-struct MaestroVulkanSequencerHandler {
+struct MaestroVulkanConductorHandler {
     HarpHandlerBase _base;
 
-    HarpResult (*open_recorder)(MaestroVulkanSequencerHandler *h, MaestroVulkanDeviceActor *device, MaestroVulkanQueueKind kind, MaestroVulkanRecorder **out);
+    HarpResult (*open_recorder)(MaestroVulkanConductorHandler *h, MaestroVulkanDeviceActor *device, MaestroVulkanQueueKind kind, MaestroVulkanRecorder **out);
     HarpResult (*close_recorder)(MaestroVulkanRecorder *rec);
     VkCommandBuffer (*record)(MaestroVulkanRecorder *rec);
     MaestroVulkanCue (*submit)(MaestroVulkanRecorder *rec, const MaestroVulkanSubmitDesc *desc);
     HarpResult (*reset_recorder)(MaestroVulkanRecorder *rec);
 
     HarpResult (*flush)(MaestroVulkanRecorder *rec);
-    HarpResult (*conduct)(MaestroVulkanSequencerHandler *h);
+    HarpResult (*conduct)(MaestroVulkanConductorHandler *h);
 
-    MaestroVulkanCueState (*cue_state)(MaestroVulkanSequencerHandler *h, MaestroVulkanCue cue);
-    b8 (*cue_done)(MaestroVulkanSequencerHandler *h, MaestroVulkanCue cue);
-    HarpResult (*cue_wait)(MaestroVulkanSequencerHandler *h, MaestroVulkanCue cue, u64 timeout_ns);
-    void (*cue_release)(MaestroVulkanSequencerHandler *h, MaestroVulkanCue cue);
+    MaestroVulkanCueState (*cue_state)(MaestroVulkanConductorHandler *h, MaestroVulkanCue cue);
+    b8 (*cue_done)(MaestroVulkanConductorHandler *h, MaestroVulkanCue cue);
+    HarpResult (*cue_wait)(MaestroVulkanConductorHandler *h, MaestroVulkanCue cue, u64 timeout_ns);
+    void (*cue_release)(MaestroVulkanConductorHandler *h, MaestroVulkanCue cue);
 };
 
 
@@ -116,4 +116,4 @@ struct MaestroVulkanSequencerHandler {
 }
 #endif
 
-#endif /* MAESTRO_VULKAN_SEQUENCER_H */
+#endif /* MAESTRO_VULKAN_CONDUCTOR_H */

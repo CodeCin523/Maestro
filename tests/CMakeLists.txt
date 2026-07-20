@@ -110,25 +110,25 @@ add_test(
 
 
 add_executable(
-    test_maestro_sequencer
-    test_sequencer.c
+    test_maestro_conductor
+    test_conductor.c
 )
 
 target_link_libraries(
-    test_maestro_sequencer PRIVATE
+    test_maestro_conductor PRIVATE
     HARP::Harp
     Maestro
     Vulkan::Vulkan
 )
 
 target_include_directories(
-    test_maestro_sequencer PRIVATE
+    test_maestro_conductor PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src
 )
 
 add_test(
-    NAME test_maestro_sequencer
-    COMMAND test_maestro_sequencer
+    NAME test_maestro_conductor
+    COMMAND test_maestro_conductor
 )
 
 

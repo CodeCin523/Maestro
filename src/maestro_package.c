@@ -9,7 +9,7 @@
 #include "impl/maestro_path.h"
 #include "impl/maestro_window.h"
 #include "impl/maestro_vulkan.h"
-#include "impl/maestro_vulkan_sequencer.h"
+#include "impl/maestro_vulkan_conductor.h"
 #include "impl/maestro_vulkan_swapchain.h"
 
 #include <stdalign.h>
@@ -23,7 +23,7 @@ MaestroLoggerHandler *g_logger                    = NULL;
 MaestroPathHandler *g_path                        = NULL;
 MaestroVulkanCoreHandler *g_vulkan_core           = NULL;
 MaestroVulkanSwapchainHandler *g_vulkan_swapchain = NULL;
-MaestroVulkanSequencerHandler *g_vulkan_sequencer = NULL;
+MaestroVulkanConductorHandler *g_vulkan_conductor = NULL;
 MaestroWindowHandler *g_window                    = NULL;
 
 const char * const g_logger_name            = MAESTRO_LOGGER_HANDLER_NAME;
@@ -32,7 +32,7 @@ const char * const g_window_name            = MAESTRO_WINDOW_HANDLER_NAME;
 const char * const g_vulkan_core_name       = MAESTRO_VULKAN_CORE_HANDLER_NAME;
 const char * const g_vulkan_device_name     = MAESTRO_VULKAN_DEVICE_ACTOR_NAME;
 const char * const g_vulkan_swapchain_name  = MAESTRO_VULKAN_SWAPCHAIN_HANDLER_NAME;
-const char * const g_vulkan_sequencer_name  = MAESTRO_VULKAN_SEQUENCER_HANDLER_NAME;
+const char * const g_vulkan_conductor_name  = MAESTRO_VULKAN_CONDUCTOR_HANDLER_NAME;
 
 
 /* ================================================================================ */
@@ -228,20 +228,20 @@ HarpResult maestro_register(HarpCoreHandler *core) {
 
     core->handler_set_serving(core, handler_base, 1);
 
-    // VULKAN_SEQUENCER_HANDLER
-    HarpDependencyDesc sequencer_deps[] = {
+    // VULKAN_CONDUCTOR_HANDLER
+    HarpDependencyDesc conductor_deps[] = {
         {g_vulkan_core_name, 0, UINT32_MAX}
     };
 
     handler_desc = (HarpHandlerDesc) {
-        .name               = g_vulkan_sequencer_name,
-        .version            = MAESTRO_VULKAN_SEQUENCER_HANDLER_VERSION,
-        .instance_size      = sizeof(MaestroVulkanSequencerHandlerImpl),
-        .instance_alignment = alignof(MaestroVulkanSequencerHandlerImpl),
-        .pfn_init           = init_vulkan_sequencer,
-        .pfn_term           = term_vulkan_sequencer,
-        .pfn_patch          = patch_vulkan_sequencer,
-        .p_dependencies     = sequencer_deps,
+        .name               = g_vulkan_conductor_name,
+        .version            = MAESTRO_VULKAN_CONDUCTOR_HANDLER_VERSION,
+        .instance_size      = sizeof(MaestroVulkanConductorHandlerImpl),
+        .instance_alignment = alignof(MaestroVulkanConductorHandlerImpl),
+        .pfn_init           = init_vulkan_conductor,
+        .pfn_term           = term_vulkan_conductor,
+        .pfn_patch          = patch_vulkan_conductor,
+        .p_dependencies     = conductor_deps,
         .dependency_count   = 1
     };
 
@@ -249,19 +249,19 @@ HarpResult maestro_register(HarpCoreHandler *core) {
     if(res != HARP_RESULT_OK)
         return res;
 
-    MaestroVulkanSequencerHandler *sequencer = HARP_HANDLER_AS(MaestroVulkanSequencerHandler, handler_base);
+    MaestroVulkanConductorHandler *conductor = HARP_HANDLER_AS(MaestroVulkanConductorHandler, handler_base);
 
-    sequencer->open_recorder = seq_open_recorder;
-    sequencer->close_recorder = seq_close_recorder;
-    sequencer->record = seq_record;
-    sequencer->submit = seq_submit;
-    sequencer->reset_recorder = seq_reset_recorder;
-    sequencer->flush = seq_flush;
-    sequencer->conduct = seq_conduct;
-    sequencer->cue_state = seq_cue_state;
-    sequencer->cue_done = seq_cue_done;
-    sequencer->cue_wait = seq_cue_wait;
-    sequencer->cue_release = seq_cue_release;
+    conductor->open_recorder = conductor_open_recorder;
+    conductor->close_recorder = conductor_close_recorder;
+    conductor->record = conductor_record;
+    conductor->submit = conductor_submit;
+    conductor->reset_recorder = conductor_reset_recorder;
+    conductor->flush = conductor_flush;
+    conductor->conduct = conductor_conduct;
+    conductor->cue_state = conductor_cue_state;
+    conductor->cue_done = conductor_cue_done;
+    conductor->cue_wait = conductor_cue_wait;
+    conductor->cue_release = conductor_cue_release;
 
     core->handler_set_serving(core, handler_base, 1);
 
@@ -271,7 +271,7 @@ HarpResult maestro_register(HarpCoreHandler *core) {
     g_path = path;
     g_vulkan_core = vulkan_core;
     g_vulkan_swapchain = swapchain;
-    g_vulkan_sequencer = sequencer;
+    g_vulkan_conductor = conductor;
     g_window = window;
 
 

@@ -1,7 +1,7 @@
-#ifndef IMPL_MAESTRO_VULKAN_SEQUENCER_H
-#define IMPL_MAESTRO_VULKAN_SEQUENCER_H
+#ifndef IMPL_MAESTRO_VULKAN_CONDUCTOR_H
+#define IMPL_MAESTRO_VULKAN_CONDUCTOR_H
 
-#include <maestro/maestro_vulkan_sequencer.h>
+#include <maestro/maestro_vulkan_conductor.h>
 
 #include <threads.h>
 #include <stdatomic.h>
@@ -11,7 +11,7 @@
 
 typedef struct SeqQueueSlot SeqQueueSlot;
 typedef struct SeqDeviceState SeqDeviceState;
-typedef struct MaestroVulkanSequencerHandlerImpl MaestroVulkanSequencerHandlerImpl;
+typedef struct MaestroVulkanConductorHandlerImpl MaestroVulkanConductorHandlerImpl;
 
 typedef struct SeqCueRecord {
     u32 next; /* next cue index in the slot FIFO, or SEQ_SENTINEL */
@@ -60,7 +60,7 @@ struct SeqDeviceState {
 };
 
 struct MaestroVulkanRecorder {
-    MaestroVulkanSequencerHandlerImpl *seq;
+    MaestroVulkanConductorHandlerImpl *seq;
     SeqDeviceState *dev;
     SeqQueueSlot *slot;
     VkCommandPool pool;
@@ -70,8 +70,8 @@ struct MaestroVulkanRecorder {
     u64 last_value;
 };
 
-struct MaestroVulkanSequencerHandlerImpl {
-    MaestroVulkanSequencerHandler pub;
+struct MaestroVulkanConductorHandlerImpl {
+    MaestroVulkanConductorHandler pub;
 
     SeqDeviceState *device_list;
     mtx_t attach_lock;
@@ -84,21 +84,21 @@ struct MaestroVulkanSequencerHandlerImpl {
 };
 
 
-HarpResult init_vulkan_sequencer(HarpCoreHandler *core_handler, HarpHandlerBase *base, HarpCreatorBase *creator);
-HarpResult term_vulkan_sequencer(HarpCoreHandler *core_handler, HarpHandlerBase *base);
-HarpResult patch_vulkan_sequencer(HarpCoreHandler *core_handler, HarpHandlerBase *base);
+HarpResult init_vulkan_conductor(HarpCoreHandler *core_handler, HarpHandlerBase *base, HarpCreatorBase *creator);
+HarpResult term_vulkan_conductor(HarpCoreHandler *core_handler, HarpHandlerBase *base);
+HarpResult patch_vulkan_conductor(HarpCoreHandler *core_handler, HarpHandlerBase *base);
 
-HarpResult seq_open_recorder(MaestroVulkanSequencerHandler *h, MaestroVulkanDeviceActor *device, MaestroVulkanQueueKind kind, MaestroVulkanRecorder **out);
-HarpResult seq_close_recorder(MaestroVulkanRecorder *rec);
-VkCommandBuffer seq_record(MaestroVulkanRecorder *rec);
-MaestroVulkanCue seq_submit(MaestroVulkanRecorder *rec, const MaestroVulkanSubmitDesc *desc);
-HarpResult seq_reset_recorder(MaestroVulkanRecorder *rec);
-HarpResult seq_flush(MaestroVulkanRecorder *rec);
-HarpResult seq_conduct(MaestroVulkanSequencerHandler *h);
-MaestroVulkanCueState seq_cue_state(MaestroVulkanSequencerHandler *h, MaestroVulkanCue cue);
-b8 seq_cue_done(MaestroVulkanSequencerHandler *h, MaestroVulkanCue cue);
-HarpResult seq_cue_wait(MaestroVulkanSequencerHandler *h, MaestroVulkanCue cue, u64 timeout_ns);
-void seq_cue_release(MaestroVulkanSequencerHandler *h, MaestroVulkanCue cue);
+HarpResult conductor_open_recorder(MaestroVulkanConductorHandler *h, MaestroVulkanDeviceActor *device, MaestroVulkanQueueKind kind, MaestroVulkanRecorder **out);
+HarpResult conductor_close_recorder(MaestroVulkanRecorder *rec);
+VkCommandBuffer conductor_record(MaestroVulkanRecorder *rec);
+MaestroVulkanCue conductor_submit(MaestroVulkanRecorder *rec, const MaestroVulkanSubmitDesc *desc);
+HarpResult conductor_reset_recorder(MaestroVulkanRecorder *rec);
+HarpResult conductor_flush(MaestroVulkanRecorder *rec);
+HarpResult conductor_conduct(MaestroVulkanConductorHandler *h);
+MaestroVulkanCueState conductor_cue_state(MaestroVulkanConductorHandler *h, MaestroVulkanCue cue);
+b8 conductor_cue_done(MaestroVulkanConductorHandler *h, MaestroVulkanCue cue);
+HarpResult conductor_cue_wait(MaestroVulkanConductorHandler *h, MaestroVulkanCue cue, u64 timeout_ns);
+void conductor_cue_release(MaestroVulkanConductorHandler *h, MaestroVulkanCue cue);
 
 
-#endif /* IMPL_MAESTRO_VULKAN_SEQUENCER_H */
+#endif /* IMPL_MAESTRO_VULKAN_CONDUCTOR_H */

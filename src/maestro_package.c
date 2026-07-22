@@ -7,6 +7,7 @@
 #include "maestro_globals.h"
 #include "impl/maestro_logger.h"
 #include "impl/maestro_path.h"
+#include "impl/maestro_uptime.h"
 #include "impl/maestro_window.h"
 #include "impl/maestro_vulkan.h"
 #include "impl/maestro_vulkan_conductor.h"
@@ -21,6 +22,7 @@
 
 MaestroLoggerHandler *g_logger                    = NULL;
 MaestroPathHandler *g_path                        = NULL;
+MaestroUptimeHandler *g_uptime                    = NULL;
 MaestroVulkanCoreHandler *g_vulkan_core           = NULL;
 MaestroVulkanSwapchainHandler *g_vulkan_swapchain = NULL;
 MaestroVulkanConductorHandler *g_vulkan_conductor = NULL;
@@ -28,6 +30,7 @@ MaestroWindowHandler *g_window                    = NULL;
 
 const char * const g_logger_name            = MAESTRO_LOGGER_HANDLER_NAME;
 const char * const g_path_name              = MAESTRO_PATH_HANDLER_NAME;
+const char * const g_uptime_name            = MAESTRO_UPTIME_HANDLER_NAME;
 const char * const g_window_name            = MAESTRO_WINDOW_HANDLER_NAME;
 const char * const g_vulkan_core_name       = MAESTRO_VULKAN_CORE_HANDLER_NAME;
 const char * const g_vulkan_device_name     = MAESTRO_VULKAN_DEVICE_ACTOR_NAME;
@@ -113,6 +116,29 @@ HarpResult maestro_register(HarpCoreHandler *core) {
     path->makef     = path_makef;
     path->info      = path_info;
     path->enumerate = path_enumerate;
+
+    core->handler_set_serving(core, handler_base, 1);
+
+    // UPTIME_HANDLER
+    handler_desc = (HarpHandlerDesc) {
+        .name               = g_uptime_name,
+        .version            = MAESTRO_UPTIME_HANDLER_VERSION,
+        .instance_size      = sizeof(MaestroUptimeHandlerImpl),
+        .instance_alignment = alignof(MaestroUptimeHandlerImpl),
+        .pfn_init           = init_uptime,
+        .pfn_term           = term_uptime,
+        .pfn_patch          = patch_uptime,
+        .p_dependencies     = NULL,
+        .dependency_count   = 0
+    };
+
+    res = core->register_handler(core, &handler_desc, &handler_base);
+    if(res != HARP_RESULT_OK)
+        return res;
+
+    MaestroUptimeHandler *uptime = HARP_HANDLER_AS(MaestroUptimeHandler, handler_base);
+
+    uptime->get_uptime_ns = uptime_get_uptime_ns;
 
     core->handler_set_serving(core, handler_base, 1);
 
@@ -269,6 +295,7 @@ HarpResult maestro_register(HarpCoreHandler *core) {
     // SAVES GLOBAL
     g_logger = logger;
     g_path = path;
+    g_uptime = uptime;
     g_vulkan_core = vulkan_core;
     g_vulkan_swapchain = swapchain;
     g_vulkan_conductor = conductor;
